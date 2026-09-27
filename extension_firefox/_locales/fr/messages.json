@@ -1,0 +1,140 @@
+{
+  "extensionName": {
+    "message": "YouTube Music Player"
+  },
+  "extensionDescription": {
+    "message": "Contrôlez YouTube Music avec un Mini-Lecteur Picture-in-Picture toujours au-dessus de toute application, paroles synchronisées et raccourcis."
+  },
+  "trackTitlePlaceholder": {
+    "message": "Titre du morceau"
+  },
+  "trackArtistPlaceholder": {
+    "message": "Artiste"
+  },
+  "lightTheme": {
+    "message": "Thème clair"
+  },
+  "sleepTimerLabel": {
+    "message": "Minuteur de veille :"
+  },
+  "none": {
+    "message": "Aucun"
+  },
+  "15Minutes": {
+    "message": "15 minutes"
+  },
+  "30Minutes": {
+    "message": "30 minutes"
+  },
+  "45Minutes": {
+    "message": "45 minutes"
+  },
+  "60Minutes": {
+    "message": "60 minutes"
+  },
+  "sleepTimerTitle": {
+    "message": "Minuteur de veille"
+  },
+  "sleepTimerMessage": {
+    "message": "La lecture a été mise en pause selon votre minuteur de veille."
+  },
+  "sleepTimerCleared": {
+    "message": "Le minuteur de veille a été réinitialisé."
+  },
+  "artistNotification": {
+    "message": "Artiste : $1"
+  },
+  "openYouTubeMusicAlert": {
+    "message": "Veuillez ouvrir YouTube Music dans l'un de vos onglets."
+  },
+  "like": {
+    "message": "J'aime"
+  },
+  "dislike": {
+    "message": "Je n'aime pas"
+  },
+  "shuffle": {
+    "message": "Aléatoire"
+  },
+  "repeat": {
+    "message": "Répéter"
+  },
+  "previous": {
+    "message": "Précédent"
+  },
+  "playPause": {
+    "message": "Lecture / Pause"
+  },
+  "next": {
+    "message": "Suivant"
+  },
+  "optionsTitle": {
+    "message": "Paramètres"
+  },
+  "optionsNotifications": {
+    "message": "Afficher une notification au changement de morceau"
+  },
+  "optionsBlur": {
+    "message": "Effet de flou d'arrière-plan sur la page du lecteur"
+  },
+  "optionsHotkeys": {
+    "message": "Activer les raccourcis clavier"
+  },
+  "optionsHotkeysHint": {
+    "message": "Note : Vous pouvez configurer les raccourcis en mode global ou dans le navigateur via chrome://extensions/shortcuts."
+  },
+  "optionsSaved": {
+    "message": "Enregistré"
+  },
+  "openYouTubeMusicTab": {
+    "message": "Ouvrir YouTube Music"
+  },
+  "miniPlayer": {
+    "message": "Mini-Lecteur"
+  },
+  "rewind10": {
+    "message": "Recul 10s"
+  },
+  "forward10": {
+    "message": "Avance 10s"
+  },
+  "mute": {
+    "message": "Muet"
+  },
+  "pictureInPicture": {
+    "message": "Picture-in-Picture (Au-dessus de toute application)"
+  },
+  "openInWindow": {
+    "message": "Ouvrir dans une fenêtre"
+  },
+  "playbackSpeed": {
+    "message": "Vitesse de lecture"
+  },
+  "lyrics": {
+    "message": "Paroles"
+  },
+  "lyricsNotFound": {
+    "message": "Aucune parole trouvée."
+  },
+  "lyricsLoading": {
+    "message": "Chargement des paroles…"
+  },
+  "seekLabel": {
+    "message": "Position"
+  },
+  "volumeLabel": {
+    "message": "Volume"
+  },
+  "lyricsAddToLrclib": {
+    "message": "Ajouter sur lrclib"
+  },
+  "lyricsSearchGoogle": {
+    "message": "Rechercher sur Google"
+  },
+  "pipTooltip": {
+    "message": "Mini-Lecteur PiP (Toujours au-dessus de toute app)"
+  },
+  "toggleVideo": {
+    "message": "Afficher / Masquer la vidéo"
+  }
+}

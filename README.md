@@ -13,7 +13,10 @@
 
 ### 📥 Étape 1 : Télécharger l'extension
 
-👉 **[Télécharger l'extension (youtube_music_player.zip)](https://github.com/Nael-Basset/ytm-remote/releases/latest/download/youtube_music_player.zip)** *(Dernière version prête à l'emploi)*
+Choisissez l'archive correspondant à votre navigateur :
+
+- 🔵 **[Télécharger pour Google Chrome, Brave, Edge, Opera (youtube_music_player_chrome.zip)](https://github.com/Nael-Basset/ytm-remote/releases/latest/download/youtube_music_player_chrome.zip)**
+- 🦊 **[Télécharger pour Mozilla Firefox (youtube_music_player_firefox.zip)](https://github.com/Nael-Basset/ytm-remote/releases/latest/download/youtube_music_player_firefox.zip)**
 
 Une fois le fichier `.zip` téléchargé sur votre ordinateur, **décompressez-le** (clic droit ➔ *Extraire tout*).
 

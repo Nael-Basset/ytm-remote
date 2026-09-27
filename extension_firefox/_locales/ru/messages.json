@@ -1,0 +1,140 @@
+{
+  "extensionName": {
+    "message": "YouTube Music Player"
+  },
+  "extensionDescription": {
+    "message": "Управляйте YouTube Music с мини-плеером Picture-in-Picture поверх всех окон, текстом песен и горячими клавишами."
+  },
+  "trackTitlePlaceholder": {
+    "message": "Название трека"
+  },
+  "trackArtistPlaceholder": {
+    "message": "Исполнитель"
+  },
+  "lightTheme": {
+    "message": "Светлая тема"
+  },
+  "sleepTimerLabel": {
+    "message": "Таймер сна:"
+  },
+  "none": {
+    "message": "Выкл"
+  },
+  "15Minutes": {
+    "message": "15 минут"
+  },
+  "30Minutes": {
+    "message": "30 минут"
+  },
+  "45Minutes": {
+    "message": "45 минут"
+  },
+  "60Minutes": {
+    "message": "60 минут"
+  },
+  "sleepTimerTitle": {
+    "message": "Таймер сна"
+  },
+  "sleepTimerMessage": {
+    "message": "Воспроизведение приостановлено по таймеру сна."
+  },
+  "sleepTimerCleared": {
+    "message": "Таймер сна отключён."
+  },
+  "artistNotification": {
+    "message": "Исполнитель: $1"
+  },
+  "openYouTubeMusicAlert": {
+    "message": "Пожалуйста, откройте YouTube Music во вкладке браузера."
+  },
+  "like": {
+    "message": "Нравится"
+  },
+  "dislike": {
+    "message": "Не нравится"
+  },
+  "shuffle": {
+    "message": "Перемешать"
+  },
+  "repeat": {
+    "message": "Повтор"
+  },
+  "previous": {
+    "message": "Предыдущий трек"
+  },
+  "playPause": {
+    "message": "Воспроизведение / Пауза"
+  },
+  "next": {
+    "message": "Следующий трек"
+  },
+  "optionsTitle": {
+    "message": "Настройки"
+  },
+  "optionsNotifications": {
+    "message": "Уведомлять при смене трека"
+  },
+  "optionsBlur": {
+    "message": "Размывать фон страницы плеера"
+  },
+  "optionsHotkeys": {
+    "message": "Включить горячие клавиши"
+  },
+  "optionsHotkeysHint": {
+    "message": "Примечание: настроить глобальные горячие клавиши можно на chrome://extensions/shortcuts."
+  },
+  "optionsSaved": {
+    "message": "Сохранено"
+  },
+  "openYouTubeMusicTab": {
+    "message": "Открыть вкладку YouTube Music"
+  },
+  "miniPlayer": {
+    "message": "Мини-плеер"
+  },
+  "rewind10": {
+    "message": "Назад на 10с"
+  },
+  "forward10": {
+    "message": "Вперёд на 10с"
+  },
+  "mute": {
+    "message": "Выключить звук"
+  },
+  "pictureInPicture": {
+    "message": "Картинка в картинке (Поверх всех окон)"
+  },
+  "openInWindow": {
+    "message": "Открыть в отдельном окне"
+  },
+  "playbackSpeed": {
+    "message": "Скорость воспроизведения"
+  },
+  "lyrics": {
+    "message": "Текст песни"
+  },
+  "lyricsNotFound": {
+    "message": "Текст песни не найден."
+  },
+  "lyricsLoading": {
+    "message": "Загрузка…"
+  },
+  "seekLabel": {
+    "message": "Перемотка"
+  },
+  "volumeLabel": {
+    "message": "Громкость"
+  },
+  "lyricsAddToLrclib": {
+    "message": "Добавить на lrclib"
+  },
+  "lyricsSearchGoogle": {
+    "message": "Найти в Google"
+  },
+  "pipTooltip": {
+    "message": "Мини-плеер PiP (Поверх всех окон)"
+  },
+  "toggleVideo": {
+    "message": "Видео"
+  }
+}
