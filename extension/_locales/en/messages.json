@@ -1,0 +1,140 @@
+{
+  "extensionName": {
+    "message": "YouTube Music Player"
+  },
+  "extensionDescription": {
+    "message": "Control YouTube Music playback directly with an Always-on-Top Picture-in-Picture Mini-Player, lyrics, and hotkeys."
+  },
+  "trackTitlePlaceholder": {
+    "message": "Track Title"
+  },
+  "trackArtistPlaceholder": {
+    "message": "Artist"
+  },
+  "lightTheme": {
+    "message": "Light Theme"
+  },
+  "sleepTimerLabel": {
+    "message": "Sleep Timer:"
+  },
+  "none": {
+    "message": "None"
+  },
+  "15Minutes": {
+    "message": "15 Minutes"
+  },
+  "30Minutes": {
+    "message": "30 Minutes"
+  },
+  "45Minutes": {
+    "message": "45 Minutes"
+  },
+  "60Minutes": {
+    "message": "60 Minutes"
+  },
+  "sleepTimerTitle": {
+    "message": "Sleep Timer"
+  },
+  "sleepTimerMessage": {
+    "message": "Playback has been paused as per your sleep timer."
+  },
+  "sleepTimerCleared": {
+    "message": "Sleep timer has been cleared."
+  },
+  "artistNotification": {
+    "message": "Artist: $1"
+  },
+  "openYouTubeMusicAlert": {
+    "message": "Please open YouTube Music in one of your browser tabs."
+  },
+  "like": {
+    "message": "Like"
+  },
+  "dislike": {
+    "message": "Dislike"
+  },
+  "shuffle": {
+    "message": "Shuffle"
+  },
+  "repeat": {
+    "message": "Repeat"
+  },
+  "previous": {
+    "message": "Previous"
+  },
+  "playPause": {
+    "message": "Play/Pause"
+  },
+  "next": {
+    "message": "Next"
+  },
+  "optionsTitle": {
+    "message": "Settings"
+  },
+  "optionsNotifications": {
+    "message": "Show notification on track change"
+  },
+  "optionsBlur": {
+    "message": "Background blur effect on player page"
+  },
+  "optionsHotkeys": {
+    "message": "Enable keyboard shortcuts"
+  },
+  "optionsHotkeysHint": {
+    "message": "Note: shortcuts work globally or while Chrome is focused depending on chrome://extensions/shortcuts configuration."
+  },
+  "optionsSaved": {
+    "message": "Saved"
+  },
+  "openYouTubeMusicTab": {
+    "message": "Open YouTube Music"
+  },
+  "miniPlayer": {
+    "message": "Mini Player"
+  },
+  "rewind10": {
+    "message": "Back 10s"
+  },
+  "forward10": {
+    "message": "Forward 10s"
+  },
+  "mute": {
+    "message": "Mute"
+  },
+  "pictureInPicture": {
+    "message": "Picture-in-Picture (Always on Top)"
+  },
+  "openInWindow": {
+    "message": "Open in window"
+  },
+  "playbackSpeed": {
+    "message": "Playback speed"
+  },
+  "lyrics": {
+    "message": "Lyrics"
+  },
+  "lyricsNotFound": {
+    "message": "No lyrics found."
+  },
+  "lyricsLoading": {
+    "message": "Loading…"
+  },
+  "seekLabel": {
+    "message": "Seek"
+  },
+  "volumeLabel": {
+    "message": "Volume"
+  },
+  "lyricsAddToLrclib": {
+    "message": "Add to lrclib"
+  },
+  "lyricsSearchGoogle": {
+    "message": "Search Google"
+  },
+  "pipTooltip": {
+    "message": "Mini Player PiP (Always on top)"
+  },
+  "toggleVideo": {
+    "message": "Toggle Video View"
+  }
+}

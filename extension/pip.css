@@ -1,0 +1,760 @@
+:root {
+  --bg-main: #0c0d11;
+  --bg-card: rgba(25, 27, 34, 0.7);
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.75);
+  --text-muted: rgba(255, 255, 255, 0.45);
+  --accent: #ff0055;
+  --accent-glow: rgba(255, 0, 85, 0.35);
+  --border-color: rgba(255, 255, 255, 0.1);
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden !important;
+  font-family: var(--font-family);
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  position: fixed;
+  inset: 0;
+}
+
+.pip-app {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+  overflow: hidden !important;
+  background: var(--bg-main);
+}
+
+/* =========================================================================
+   Fond dynamique flouté (Style Better Lyrics / Apple Music)
+   ========================================================================= */
+.bg-ambient {
+  position: absolute;
+  top: -20px;
+  left: -20px;
+  right: -20px;
+  bottom: -20px;
+  background-size: cover;
+  background-position: center;
+  filter: blur(45px) saturate(2.4) brightness(0.6);
+  opacity: 0.85;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.bg-overlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 30%, rgba(12, 13, 17, 0.2) 0%, rgba(12, 13, 17, 0.85) 100%),
+              linear-gradient(180deg, rgba(12, 13, 17, 0.2) 0%, rgba(12, 13, 17, 0.95) 80%, #0c0d11 100%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* =========================================================================
+   Panneau Lecteur (Snug fit, 0 espace vide perdu)
+   ========================================================================= */
+.player-pane {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: stretch;
+  padding: 8px 10px;
+  gap: 4px;
+  overflow: hidden;
+}
+
+/* Boutons discrets du coin supérieur droit */
+.header-discreet-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.discreet-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+}
+
+.discreet-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.25);
+  transform: scale(1.05);
+}
+
+.discreet-btn.active {
+  color: var(--accent);
+  background: rgba(255, 0, 85, 0.2);
+  border-color: rgba(255, 0, 85, 0.4);
+}
+
+/* Pochette d'album : taille adaptative sans vide */
+.album-art-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 130px;
+  max-height: 130px;
+  aspect-ratio: 1 / 1;
+  margin: 0 auto;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-height: 60px;
+}
+
+.album-art-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Titre & Artiste */
+.track-info {
+  text-align: center;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.track-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+  line-height: 1.25;
+}
+
+.track-artist {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+  padding: 0 4px;
+  line-height: 1.2;
+}
+
+/* Barre de progression */
+.progress-container {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.time-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9.5px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-bar-wrap {
+  position: relative;
+  height: 10px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.progress-track {
+  width: 100%;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.1s linear;
+}
+
+.progress-slider {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 3;
+}
+
+/* Commandes principales */
+.controls-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 1px 0;
+  flex-shrink: 0;
+}
+
+.ctrl-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.ctrl-btn:hover {
+  color: var(--text-primary);
+  transform: scale(1.15);
+}
+
+.ctrl-btn-hero {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 3px 12px var(--accent-glow);
+  transition: all 0.15s ease;
+}
+
+.ctrl-btn-hero:hover {
+  transform: scale(1.08);
+  box-shadow: 0 4px 16px var(--accent-glow);
+}
+
+/* Commandes secondaires (Like, Dislike, Shuffle, Repeat) */
+.controls-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 1px 4px;
+  flex-shrink: 0;
+}
+
+.tgl-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.tgl-btn:hover {
+  color: var(--text-primary);
+}
+
+.tgl-btn.active {
+  color: #fff;
+}
+
+#pip-repeat.repeat-track {
+  color: var(--accent);
+}
+
+/* Volume compact */
+.extra-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  background: var(--bg-card);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  backdrop-filter: blur(10px);
+  flex-shrink: 0;
+}
+
+.volume-wrap {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+}
+
+.volume-slider {
+  flex: 1;
+  height: 3px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.speed-select {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-size: 9.5px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  outline: none;
+}
+
+/* =========================================================================
+   Panneau des Paroles (Style Better Lyrics & Zéro Flicker)
+   ========================================================================= */
+.lyrics-pane {
+  position: relative;
+  z-index: 4;
+  width: 240px;
+  height: 100%;
+  border-left: 1px solid var(--border-color);
+  background: rgba(10, 10, 14, 0.55);
+  backdrop-filter: blur(25px) saturate(1.8);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+  transition: opacity 0.2s ease;
+}
+
+.lyrics-pane.closed {
+  display: none !important;
+}
+
+.lyrics-pane-header {
+  padding: 12px 14px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.lyrics-close-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.lyrics-close-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.lyrics-scroll-body {
+  flex: 1;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  padding: 30vh 12px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
+  scrollbar-width: none;
+}
+
+.lyrics-scroll-body::-webkit-scrollbar {
+  display: none;
+}
+
+.lyric-line {
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.38);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+  transform-origin: left center;
+  margin: 3px 0;
+  user-select: none;
+}
+
+.lyric-line:hover {
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.lyric-line.active {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.08);
+  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.7));
+}
+
+.lyric-line.past-line {
+  opacity: 0.55;
+}
+.lyric-line.past-line .lyric-word {
+  color: rgba(255, 255, 255, 0.72);
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.72);
+}
+
+.lyric-word {
+  display: inline-block;
+  white-space: pre;
+  color: rgba(255, 255, 255, 0.32);
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.32);
+  transition: color 0.12s ease, filter 0.18s ease;
+}
+.lyric-word.future {
+  color: rgba(255, 255, 255, 0.32);
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.32);
+  filter: none;
+}
+.lyric-word.singing {
+  background: linear-gradient(90deg, #ffffff var(--prog, 0%), rgba(255, 255, 255, 0.32) var(--prog, 0%));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.7));
+}
+.lyric-word.past {
+  background: none;
+  -webkit-background-clip: initial;
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+  transform: none;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.25));
+}
+
+.lyrics-status {
+  text-align: center;
+  padding: 24px 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* =========================================================================
+   Modal Télécommande Smartphone QR Code
+   ========================================================================= */
+.qr-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: rgba(10, 10, 14, 0.8);
+  backdrop-filter: blur(16px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+}
+
+.qr-modal.closed {
+  display: none !important;
+}
+
+.qr-modal-card {
+  background: rgba(22, 24, 30, 0.95);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 16px;
+  width: min(92%, 260px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.85);
+  animation: qrPop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes qrPop {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.qr-modal-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.qr-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.qr-close-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+
+.qr-close-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.qr-code-box {
+  background: #ffffff;
+  padding: 8px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.qr-code-box canvas, .qr-code-box img {
+  display: block;
+}
+
+.qr-url-text {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-top: 10px;
+  word-break: break-all;
+  font-family: monospace;
+}
+
+.qr-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 6px;
+  line-height: 1.35;
+}
+
+/* =========================================================================
+   PALIERS RESPONSIVE COMPACTS : 0 VIDE DERRIÈRE & 0 FLICKER
+   ========================================================================= */
+
+/* Palier 1 : Écran étroit (< 460px) -> Paroles en calque fluide (sans resize de fenêtre OS) */
+@media (max-width: 460px) {
+  .lyrics-pane:not(.closed) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    z-index: 20;
+    background: rgba(10, 10, 14, 0.88);
+    backdrop-filter: blur(25px) saturate(2);
+    border-left: none;
+  }
+}
+
+/* Palier 2 : Hauteur < 260px -> Masquage pochette & volume */
+@media (max-height: 260px) {
+  .album-art-wrap {
+    display: none !important;
+  }
+  .extra-row {
+    display: none !important;
+  }
+  .player-pane {
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 10px;
+  }
+}
+
+/* Palier 3 : Hauteur < 160px (Mode Gaming Compact) -> Titre + Progress + [⏮, ⏯, ⏭] */
+@media (max-height: 160px) {
+  .album-art-wrap {
+    display: none !important;
+  }
+  .lyrics-pane {
+    display: none !important;
+  }
+  .header-discreet-actions {
+    display: none !important;
+  }
+  .controls-secondary {
+    display: none !important;
+  }
+  .extra-row {
+    display: none !important;
+  }
+  #pip-rewind, #pip-forward {
+    display: none !important;
+  }
+  .time-row {
+    display: none !important;
+  }
+
+  .player-pane {
+    padding: 4px 8px;
+    justify-content: center;
+    gap: 3px;
+  }
+
+  .track-info {
+    margin: 0;
+  }
+  .track-title {
+    font-size: 11.5px;
+  }
+  .track-artist {
+    font-size: 9.5px;
+  }
+
+  .progress-container {
+    margin: 1px 0;
+  }
+  .progress-bar-wrap {
+    height: 4px;
+  }
+  .progress-track {
+    height: 2px;
+  }
+
+  .controls-main {
+    gap: 12px;
+    margin: 0;
+  }
+  .ctrl-btn-hero {
+    width: 32px;
+    height: 32px;
+  }
+  .ctrl-btn-hero svg {
+    width: 16px;
+    height: 16px;
+  }
+  .ctrl-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* Palier 4 : Micro-Barre Gaming (< 85px) -> 100% Horizontal dans le coin */
+@media (max-height: 85px) {
+  .player-pane {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 8px;
+    gap: 8px;
+  }
+
+  .track-info {
+    text-align: left;
+    max-width: 52%;
+    margin: 0;
+  }
+  .track-title {
+    font-size: 11px;
+  }
+  .track-artist {
+    font-size: 9px;
+  }
+
+  /* Barre de progression ultra-fine au bas absolu */
+  .progress-container {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    margin: 0;
+  }
+  .progress-bar-wrap {
+    height: 2px;
+  }
+  .progress-track {
+    height: 2px;
+    border-radius: 0;
+  }
+  .progress-fill {
+    border-radius: 0;
+  }
+
+  .controls-main {
+    gap: 6px;
+    margin: 0;
+  }
+  .ctrl-btn-hero {
+    width: 26px;
+    height: 26px;
+  }
+  .ctrl-btn-hero svg {
+    width: 13px;
+    height: 13px;
+  }
+  .ctrl-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+}

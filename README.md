@@ -1,56 +1,91 @@
-# 📱 YouTube Music Remote (P2P WebRTC)
+# 🎵 YouTube Music Player & Remote P2P
 
-Application web mobile autonome et universelle permettant de contrôler **YouTube Music** à distance depuis n'importe quel smartphone, tablette ou navigateur, **sans aucune installation logicielle** sur le PC hôte (Zéro Python, Zéro serveur local, Zéro configuration).
+> **L'extension ultime et universelle pour YouTube Music** : Mini-Player Picture-in-Picture Always-on-Top, paroles synchronisées style Apple Music (BetterLyrics), et télécommande smartphone temps réel **100 % Plug & Play** (WebRTC P2P, zéro configuration, zéro Python).
 
----
-
-## ✨ Fonctionnalités
-
-- **⚡ 100 % Plug & Play Universel** : Connexion instantanée (< 100 ms) via scan de QR Code ou lien de salle (`#ytm-xxxx`).
-- **🌐 Communication WebRTC P2P directe** : Connexion poste-à-poste sécurisée et chiffrée entre votre smartphone et votre navigateur PC grâce à WebRTC DataChannels (PeerJS).
-- **📶 Fonctionne partout** : Compatible que votre téléphone soit sur le même réseau Wi-Fi local ou en données mobiles (4G / 5G).
-- **👥 Multi-appareils simultanés** : Plusieurs smartphones ou tablettes peuvent être connectés en même temps pour contrôler la musique à plusieurs.
-- **🎨 Interface Apple Music Dark Mode** : Fond dynamique flouté réagissant à la pochette d'album en temps réel, animations fluides et retour haptique (vibrations).
-- **🎤 Paroles Synchronisées (Apple Music Style)** :
-  - Défilement automatique ligne par ligne synchronisé avec le lecteur.
-  - Clic direct sur une phrase pour sauter immédiatement à ce moment du morceau.
-  - Mode Plein Écran immersif avec mini-contrôles au pouce.
-  - Support de la recherche multi-niveaux LRCLIB et des balises `[offset]`.
-- **🎶 File d'attente complète ("À suivre")** :
-  - Affichage de l'ensemble des titres de la playlist avec miniatures haute qualité.
-  - Lancement instantané d'un morceau de la file en un clic.
-- **🎛️ Contrôles complets du lecteur** :
-  - Lecture / Pause, Morceau suivant, Morceau précédent.
-  - Barre de progression interactive (Seek).
-  - Contrôle du volume en temps réel.
-  - Répétition à 3 états réels : Désactivé (0) ➔ Tout répéter (1) ➔ Répéter le titre (2).
-  - Boutons Like, Dislike et Aléatoire (Shuffle).
+[![GitHub Release](https://img.shields.io/github/v/release/Nael-Basset/ytm-remote?color=%23ff0055&label=Release)](https://github.com/Nael-Basset/ytm-remote/releases/latest)
+[![GitHub Pages](https://img.shields.io/badge/Web%20App-GitHub%20Pages-brightgreen)](https://nael-basset.github.io/ytm-remote/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Browsers](https://img.shields.io/badge/Navigateurs-Chrome%20%7C%20Brave%20%7C%20Edge%20%7C%20Firefox-orange)](#-installation-rapide-en-1-minute)
 
 ---
 
-## 🏗️ Architecture
+## ⚡ Installation Rapide (En 1 minute chrono)
+
+### 📥 Étape 1 : Télécharger l'extension
+
+👉 **[Télécharger l'extension (youtube_music_player.zip)](https://github.com/Nael-Basset/ytm-remote/releases/latest/download/youtube_music_player.zip)** *(Dernière version prête à l'emploi)*
+
+Une fois le fichier `.zip` téléchargé sur votre ordinateur, **décompressez-le** (clic droit ➔ *Extraire tout*).
+
+---
+
+### 🌐 Étape 2 : L'installer dans votre navigateur
+
+Choisissez votre navigateur ci-dessous :
+
+#### 🔵 Google Chrome, Brave, Microsoft Edge, Opera, Vivaldi (Navigateurs Chromium)
+
+1. Ouvrez la page de gestion des extensions dans votre navigateur :
+   - **Google Chrome** : tapez `chrome://extensions` dans la barre d'adresse.
+   - **Brave** : tapez `brave://extensions`.
+   - **Microsoft Edge** : tapez `edge://extensions`.
+   - **Opera** : tapez `opera://extensions`.
+2. Activez le bouton **Mode développeur** en haut à droite de l'écran.
+3. Cliquez sur le bouton **Charger l'extension non empaquetée** *(Load unpacked)* en haut à gauche.
+4. Sélectionnez le dossier décompressé contenant les fichiers de l'extension.
+5. C'est tout ! L'extension est installée et active.
+
+#### 🦊 Mozilla Firefox
+
+1. Ouvrez un onglet et tapez `about:debugging#/runtime/this-firefox` dans la barre d'adresse.
+2. Cliquez sur le bouton **Charger un module temporaire...**.
+3. Sélectionnez le fichier `manifest.json` situé à l'intérieur du dossier décompressé de l'extension.
+4. C'est prêt !
+
+---
+
+### 🎧 Étape 3 : Utilisation
+
+1. Rendez-vous sur **[music.youtube.com](https://music.youtube.com)** (rafraîchissez la page si elle était déjà ouverte).
+2. Deux nouvelles icônes apparaissent directement dans la barre de contrôle en bas à droite :
+   - 🖼️ **Mini-Player PiP** : Ouvre un lecteur flottant Always-on-Top ultra-compact avec paroles et contrôles complets.
+   - 📱 **Télécommande Smartphone** : Affiche instantanément un QR Code.
+3. **Scannez le QR Code avec l'appareil photo de votre smartphone** :
+   - L'application web mobile [https://nael-basset.github.io/ytm-remote/](https://nael-basset.github.io/ytm-remote/) s'ouvre automatiquement.
+   - Votre smartphone se connecte **en moins de 100 ms en direct (P2P)** à votre PC, sans aucun compte ni installation sur votre téléphone !
+
+---
+
+## ✨ Fonctionnalités Principales
+
+| Fonctionnalité | Description |
+| :--- | :--- |
+| **📱 Télécommande WebRTC P2P** | Contrôlez la musique depuis votre canapé ou votre lit. Fonctionne en Wi-Fi local comme en 4G / 5G. |
+| **👥 Multi-appareils en simultané** | Plusieurs smartphones ou tablettes peuvent être connectés en même temps pour gérer la musique à plusieurs. |
+| **🎤 Paroles Mot par Mot (BetterLyrics)** | Les mots s'illuminent au rythme exact où ils sont chantés (sans grossissement intempestif pour une lisibilité parfaite). Mode plein écran immersif inclus. |
+| **🎶 File d'attente complète ("À suivre")** | Affiche tous les morceaux à venir avec leurs pochettes d'album haute qualité (sans blocage après le 14ᵉ morceau). Cliquez sur n'importe quel titre pour le lancer. |
+| **🔁 Répétition à 3 États** | Basculez d'un clic entre **Désactivé (0)**, **Répéter toute la playlist (1)** et **Répéter le morceau en cours (2)**. |
+| **🎛️ Commandes complètes** | Lecture, Pause, Suivant, Précédent, Barre de progression fluide, Contrôle du volume, Like, Dislike, Mode Aléatoire (Shuffle). |
+| **⌨️ Raccourcis Clavier Globaux** | Contrôlez YouTube Music en jeu ou dans n'importe quel logiciel grâce aux touches de raccourci paramétrables. |
+| **🔒 100 % Respectueux de la vie privée** | Aucune donnée collectée, aucun compte requis, communication P2P chiffrée de bout en bout. |
+
+---
+
+## 🏗️ Comment ça fonctionne ?
 
 ```mermaid
 flowchart LR
-    A["Extension PC (Brave/Chrome/Firefox)"] <-->|"WebRTC DataChannel (P2P direct)"| B["Smartphone (Web App GitHub Pages)"]
-    A <-->|"Signaling initial uniquement"| C["Serveur Public PeerJS STUN"]
-    B <-->|"Signaling initial uniquement"| C
+    A["PC (YouTube Music + Extension)"] <-->|"WebRTC DataChannel (P2P direct)"| B["Smartphone (Web App GitHub Pages)"]
+    A <-->|"Négociation STUN (Initialisation)"| C["Serveur Public PeerJS STUN"]
+    B <-->|"Négociation STUN (Initialisation)"| C
 ```
 
-1. **PC (Hôte)** : L'extension injectée dans `music.youtube.com` ouvre une salle WebRTC sécurisée identifiée par un code unique de session.
-2. **Smartphone (Client)** : En scannant le QR Code affiché sur le PC (ou dans le mini-lecteur PiP), le téléphone charge l'application web hébergée sur GitHub Pages et rejoint la salle WebRTC.
-3. **P2P direct** : Une fois la négociation initiale terminée via STUN, les paquets d'état et les commandes transitent en direct en peer-to-peer sans transiter par aucun serveur tiers.
-
----
-
-## 🔒 Confidentialité & Sécurité
-
-- Aucun compte requis.
-- Aucune donnée personnelle, identifiant ou historique d'écoute n'est collecté ou enregistré.
-- Connexion chiffrée de bout en bout (DTLS / SCTP) par le standard WebRTC.
+1. **Extension PC** : Héberge un nœud WebRTC sécurisé directement dans l'onglet YouTube Music.
+2. **Web App Mobile** : Hébergée sur GitHub Pages, elle se connecte directement à votre PC via un canal de données sécurisé dès le scan du QR Code.
+3. **P2P direct** : Zéro latence, zéro intermédiaire, zéro serveur tiers.
 
 ---
 
 ## 📄 Licence
 
-Ce projet est sous licence [MIT](LICENSE).
+Ce projet est sous licence libre [MIT](LICENSE).

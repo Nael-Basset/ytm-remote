@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title data-i18n="optionsTitle">Paramètres - YouTube Music Player</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="wrap">
+    <h1 data-i18n="optionsTitle">Paramètres</h1>
+
+    <div class="section">
+      <label class="option">
+        <input type="checkbox" id="notifications-enabled">
+        <span data-i18n="optionsNotifications">Afficher une notification au changement de morceau</span>
+      </label>
+
+      <label class="option">
+        <input type="checkbox" id="blur-enabled">
+        <span data-i18n="optionsBlur">Effet de flou d'arrière-plan sur la page et le lecteur PiP</span>
+      </label>
+
+      <label class="option">
+        <input type="checkbox" id="hotkeys-enabled">
+        <span data-i18n="optionsHotkeys">Activer les raccourcis clavier</span>
+      </label>
+
+      <label class="option">
+        <input type="checkbox" id="light-theme">
+        <span data-i18n="lightTheme">Thème clair</span>
+      </label>
+    </div>
+
+    <!-- Section Raccourcis Clavier -->
+    <div class="shortcuts-section">
+      <div class="shortcuts-header">
+        <h2>Raccourcis Clavier</h2>
+        <button id="open-shortcuts-btn" class="shortcut-config-btn" title="Ouvrir la page de configuration des raccourcis dans Chrome">
+          Configurer dans Chrome ↗
+        </button>
+      </div>
+      <p class="hint">Ces raccourcis peuvent fonctionner partout sur votre PC (en jeu, en bureautique) en les passant en mode "Global" dans Chrome.</p>
+
+      <div class="shortcuts-list" id="shortcuts-list">
+        <!-- Rempli dynamiquement avec les touches réelles assignées -->
+      </div>
+    </div>
+
+    <p id="status" class="status" data-i18n="optionsSaved" hidden>Enregistré</p>
+  </div>
+
+  <script src="i18n.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

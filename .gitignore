@@ -1,0 +1,4 @@
+*.zip
+pages_config.json
+.DS_Store
+Thumbs.db
