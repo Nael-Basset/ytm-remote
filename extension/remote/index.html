@@ -1040,12 +1040,35 @@
 
     addLog('INIT', 'Démarrage télécommande. Room cible: ' + (targetRoomId || 'AUCUNE (flashez le QR)'), '#fff');
 
+    function sendP2PMessage(payload) {
+      if (!payload) return false;
+      let sent = false;
+      // 1. Envoi via PeerJS DataConnection
+      if (dataChannel && dataChannel.open) {
+        try {
+          dataChannel.send(payload);
+          sent = true;
+        } catch (e) {}
+      }
+      // 2. Envoi direct via RTCDataChannel natif (contourne le bug Firefox WebRTC)
+      try {
+        if (dataChannel && dataChannel.dataChannel && dataChannel.dataChannel.readyState === 'open') {
+          dataChannel.dataChannel.send(JSON.stringify(payload));
+          sent = true;
+        }
+      } catch (e) {}
+      return sent;
+    }
+
     function sendAction(action, value = null) {
       vibrate();
       const valStr = (value !== null && value !== undefined) ? ' ' + JSON.stringify(value) : '';
-      if (dataChannel && dataChannel.open) {
+      const msgId = 'act-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+      const payload = { action, value, msgId };
+
+      const sent = sendP2PMessage(payload);
+      if (sent) {
         addLog('ENVOI', action + valStr, '#00e5ff');
-        dataChannel.send({ action, value });
       } else {
         addLog('ERR', 'Échec envoi (' + action + '): Canal non ouvert !', '#ff3366');
       }
@@ -1110,17 +1133,30 @@
         serialization: 'json'
       });
 
-      dataChannel.on('open', () => {
-        el.connDot.className = 'status-dot connected';
-        el.connText.textContent = 'Connecté en direct à votre PC';
-        addLog('CONN', 'Canal WebRTC OUVERT ! En attente de l\'état PC…', '#00e676');
-      });
-
       let lastLoggedTrack = '';
       let lastLoggedPlay = null;
+      const handledIncomingKeys = new Set();
 
-      dataChannel.on('data', (payload) => {
-        if (!payload) return;
+      function handleIncomingData(raw) {
+        if (!raw) return;
+        let payload = raw;
+        if (typeof payload === 'string') {
+          try { payload = JSON.parse(payload); } catch (e) {}
+        }
+        if (typeof payload !== 'object' || !payload) return;
+
+        // Déduplication anti-rebond (au cas où délivré par PeerJS ET par le dataChannel natif)
+        const inKey = payload.type === 'diag-log' ? ('diag_' + payload.message) :
+                      payload.type === 'search-results' ? ('srch_' + payload.requestId) :
+                      (payload.type + '_' + JSON.stringify(payload.data?.title || '') + '_' + Math.floor(Date.now() / 200));
+
+        if (handledIncomingKeys.has(inKey)) return;
+        handledIncomingKeys.add(inKey);
+        if (handledIncomingKeys.size > 80) {
+          const first = handledIncomingKeys.values().next().value;
+          handledIncomingKeys.delete(first);
+        }
+
         if (payload.type === 'diag-log') {
           addLog('PC', payload.message, '#a8ff00');
         } else if (payload.type === 'state') {
@@ -1136,6 +1172,33 @@
           addLog('REÇU', `Recherche: ${payload.results?.length || 0} résultats pour "${payload.query}"`, '#00e5ff');
           renderSearchResults(payload.results, payload.query);
         }
+      }
+
+      function bindNativeClientChannel(dc) {
+        if (!dc || dc._ytmBound) return;
+        dc._ytmBound = true;
+        try { dc.binaryType = 'arraybuffer'; } catch (e) {}
+
+        dc.addEventListener('message', async (evt) => {
+          let data = evt.data;
+          if (data instanceof Blob) {
+            try { data = await data.text(); } catch (e) {}
+          } else if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+            try { data = new TextDecoder().decode(data); } catch (e) {}
+          }
+          handleIncomingData(data);
+        });
+      }
+
+      dataChannel.on('open', () => {
+        el.connDot.className = 'status-dot connected';
+        el.connText.textContent = 'Connecté en direct à votre PC';
+        addLog('CONN', 'Canal WebRTC OUVERT ! En attente de l\'état PC…', '#00e676');
+        if (dataChannel.dataChannel) bindNativeClientChannel(dataChannel.dataChannel);
+      });
+
+      dataChannel.on('data', (payload) => {
+        handleIncomingData(payload);
       });
 
       dataChannel.on('close', () => {
@@ -1193,13 +1256,13 @@
       el.searchStatus.style.display = 'block';
 
       currentSearchReqId = 'req-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-      if (dataChannel && dataChannel.open) {
-        dataChannel.send({
-          action: 'search',
-          query: query,
-          requestId: currentSearchReqId
-        });
-      } else {
+      const searchSent = sendP2PMessage({
+        action: 'search',
+        query: query,
+        requestId: currentSearchReqId
+      });
+
+      if (!searchSent) {
         el.searchStatus.textContent = 'Connexion au PC nécessaire pour chercher';
       }
     }

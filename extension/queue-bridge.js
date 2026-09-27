@@ -387,9 +387,12 @@
 
   // Contrôle direct du lecteur via movie_player (contourne les restrictions d'autoplay et de Shadow DOM de Firefox)
   window.addEventListener('ytm-player-control', (e) => {
-    const detail = e.detail || {};
-    const action = typeof detail === 'string' ? detail : detail.action;
-    const value = detail.value;
+    let detail = e.detail || {};
+    if (typeof detail === 'string') {
+      try { detail = JSON.parse(detail); } catch (err) {}
+    }
+    const action = (typeof detail === 'string') ? detail : detail?.action;
+    const value = detail?.value;
     const mp = document.getElementById('movie_player');
 
     function clickFallback(selectors) {

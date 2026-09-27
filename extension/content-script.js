@@ -240,7 +240,7 @@
 
     // 1. Toujours notifier le MAIN-world (queue-bridge) qui a accès direct à movie_player sans restriction Firefox
     try {
-      window.dispatchEvent(new CustomEvent('ytm-player-control', { detail: { action, value } }));
+      window.dispatchEvent(new CustomEvent('ytm-player-control', { detail: JSON.stringify({ action, value }) }));
     } catch (e) {}
 
     switch (action) {
@@ -1868,44 +1868,47 @@
       });
 
       peerHost.on('connection', (conn) => {
-        conn.on('open', () => {
-          connectedP2PClients.add(conn);
-          try {
-            conn.send({ type: 'state', data: getTrackInfo() });
-          } catch (e) {}
-        });
+        try { conn.serialization = 'json'; } catch (e) {}
 
-        conn.on('data', async (rawPayload) => {
-          if (!rawPayload) return;
-          let payload = rawPayload;
+        const handledMsgKeys = new Set();
+
+        async function processIncomingPayload(raw) {
+          if (!raw) return;
+          let payload = raw;
           if (typeof payload === 'string') {
             try { payload = JSON.parse(payload); } catch (e) {}
           }
-          if (!payload) return;
+          if (typeof payload !== 'object' || !payload) return;
+
+          // Déduplication (si délivré à la fois par PeerJS et par le dataChannel natif)
+          const msgKey = payload.msgId || (payload.action + '_' + JSON.stringify(payload.value ?? '') + '_' + Math.floor(Date.now() / 250));
+          if (handledMsgKeys.has(msgKey)) return;
+          handledMsgKeys.add(msgKey);
+          if (handledMsgKeys.size > 100) {
+            const first = handledMsgKeys.values().next().value;
+            handledMsgKeys.delete(first);
+          }
 
           if (payload.action === 'search') {
             const query = (payload.query || payload.value || '').trim();
             const reqId = payload.requestId || Math.random().toString(36).substring(2);
             if (!query) {
-              try {
-                conn.send({ type: 'search-results', requestId: reqId, query: '', results: [] });
-              } catch (e) {}
+              const resEmpty = { type: 'search-results', requestId: reqId, query: '', results: [] };
+              try { conn.send(resEmpty); } catch (e) {}
+              try { if (conn.dataChannel?.readyState === 'open') conn.dataChannel.send(JSON.stringify(resEmpty)); } catch (e) {}
               return;
             }
 
             try {
               const results = await searchYouTubeMusic(query);
-              conn.send({
-                type: 'search-results',
-                requestId: reqId,
-                query: query,
-                results: results
-              });
+              const resData = { type: 'search-results', requestId: reqId, query: query, results: results };
+              try { conn.send(resData); } catch (e) {}
+              try { if (conn.dataChannel?.readyState === 'open') conn.dataChannel.send(JSON.stringify(resData)); } catch (e) {}
             } catch (err) {
               console.warn('[YTM Remote] Search failed:', err);
-              try {
-                conn.send({ type: 'search-results', requestId: reqId, query: query, results: [] });
-              } catch (e) {}
+              const resFail = { type: 'search-results', requestId: reqId, query: query, results: [] };
+              try { conn.send(resFail); } catch (e) {}
+              try { if (conn.dataChannel?.readyState === 'open') conn.dataChannel.send(JSON.stringify(resFail)); } catch (e) {}
             }
             return;
           }
@@ -1920,11 +1923,55 @@
             } catch (err) {
               diagInfo += ` -> ERREUR: ${err.message}`;
             }
+
+            const diagMsg = { type: 'diag-log', message: diagInfo };
+            try { conn.send(diagMsg); } catch (e) {}
             try {
-              conn.send({ type: 'diag-log', message: diagInfo });
+              if (conn.dataChannel && conn.dataChannel.readyState === 'open') {
+                conn.dataChannel.send(JSON.stringify(diagMsg));
+              }
             } catch (e) {}
+
             setTimeout(broadcastP2PState, 60);
           }
+        }
+
+        // Écoute directe sur le DataChannel RTC natif (contourne le bug Firefox Blob/ArrayBuffer de PeerJS)
+        function bindNativeChannel(dc) {
+          if (!dc || dc._ytmBound) return;
+          dc._ytmBound = true;
+          try { dc.binaryType = 'arraybuffer'; } catch (e) {}
+
+          dc.addEventListener('message', async (evt) => {
+            let data = evt.data;
+            if (data instanceof Blob) {
+              try { data = await data.text(); } catch (e) {}
+            } else if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+              try { data = new TextDecoder().decode(data); } catch (e) {}
+            }
+            processIncomingPayload(data);
+          });
+        }
+
+        if (conn.dataChannel) {
+          bindNativeChannel(conn.dataChannel);
+        }
+
+        conn.on('open', () => {
+          connectedP2PClients.add(conn);
+          if (conn.dataChannel) bindNativeChannel(conn.dataChannel);
+          try {
+            conn.send({ type: 'state', data: getTrackInfo() });
+          } catch (e) {}
+          try {
+            if (conn.dataChannel && conn.dataChannel.readyState === 'open') {
+              conn.dataChannel.send(JSON.stringify({ type: 'state', data: getTrackInfo() }));
+            }
+          } catch (e) {}
+        });
+
+        conn.on('data', (rawPayload) => {
+          processIncomingPayload(rawPayload);
         });
 
         conn.on('close', () => {
@@ -1962,6 +2009,7 @@
     try {
       const state = getTrackInfo();
       const payload = { type: 'state', data: state };
+      const jsonStr = JSON.stringify(payload);
       for (const client of connectedP2PClients) {
         if (client.open) {
           try {
@@ -1969,6 +2017,11 @@
           } catch (e) {
             connectedP2PClients.delete(client);
           }
+          try {
+            if (client.dataChannel && client.dataChannel.readyState === 'open') {
+              client.dataChannel.send(jsonStr);
+            }
+          } catch (e) {}
         }
       }
     } catch (e) {}
