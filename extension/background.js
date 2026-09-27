@@ -1,6 +1,6 @@
 // background.js - Chrome MV3 Service Worker
 
-const browser = globalThis.chrome;
+const browser = globalThis.browser || globalThis.chrome;
 
 const SETTINGS_DEFAULTS = {
   notificationsEnabled: true,
