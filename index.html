@@ -312,7 +312,7 @@
       padding: 12px 0;
     }
     .lyric-line {
-      font-size: 17.5px;
+      font-size: 18px;
       font-weight: 700;
       line-height: 1.45;
       padding: 6px 10px;
@@ -320,8 +320,7 @@
       cursor: pointer;
       opacity: 0.32;
       filter: blur(0.2px);
-      transform-origin: left center;
-      transition: opacity 0.35s ease, filter 0.35s ease, transform 0.35s cubic-bezier(0.2, 0, 0.2, 1), background 0.25s ease;
+      transition: opacity 0.3s ease, filter 0.3s ease, background 0.25s ease;
     }
     .lyric-line:active {
       background: rgba(255, 255, 255, 0.06);
@@ -329,9 +328,8 @@
     .lyric-line.active {
       opacity: 1;
       filter: none;
-      font-size: 20px;
+      font-size: 18px;
       font-weight: 800;
-      transform: scale(1.03);
       background: rgba(255, 255, 255, 0.04);
     }
     .lyric-line.past-line {
@@ -343,35 +341,31 @@
       -webkit-text-fill-color: rgba(255, 255, 255, 0.72);
     }
 
-    /* Animation mot par mot au fur et à mesure de la prononciation (Style BetterLyrics / Apple Music) */
+    /* Animation mot par mot au fur et à mesure de la prononciation (Style BetterLyrics sans grossissement) */
     .lyric-word {
       display: inline-block;
       white-space: pre;
       color: rgba(255, 255, 255, 0.3);
       -webkit-text-fill-color: rgba(255, 255, 255, 0.3);
-      transform-origin: center bottom;
-      transition: color 0.12s ease, transform 0.18s cubic-bezier(0.2, 0, 0.2, 1), filter 0.18s ease;
+      transition: color 0.12s ease, filter 0.18s ease;
     }
     .lyric-word.future {
       color: rgba(255, 255, 255, 0.3);
       -webkit-text-fill-color: rgba(255, 255, 255, 0.3);
-      transform: none;
       filter: none;
     }
     .lyric-word.singing {
       background: linear-gradient(90deg, #ffffff var(--prog, 0%), rgba(255, 255, 255, 0.3) var(--prog, 0%));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
-      transform: scale(1.08) translateY(-1px);
-      filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.8)) drop-shadow(0 0 24px rgba(255, 255, 255, 0.35));
+      filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.75)) drop-shadow(0 0 20px rgba(255, 255, 255, 0.3));
     }
     .lyric-word.past {
       background: none;
       -webkit-background-clip: initial;
       color: #ffffff;
       -webkit-text-fill-color: #ffffff;
-      transform: none;
-      filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.3));
+      filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.25));
     }
     /* Mode Plein Écran pour les paroles */
     .lyrics-section.is-fullscreen {
