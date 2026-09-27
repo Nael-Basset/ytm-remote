@@ -385,6 +385,88 @@
     }
   });
 
+  // Contrôle direct du lecteur via movie_player (contourne les restrictions d'autoplay et de Shadow DOM de Firefox)
+  window.addEventListener('ytm-player-control', (e) => {
+    const detail = e.detail || {};
+    const action = typeof detail === 'string' ? detail : detail.action;
+    const value = detail.value;
+    const mp = document.getElementById('movie_player');
+
+    function clickFallback(selectors) {
+      const list = Array.isArray(selectors) ? selectors : [selectors];
+      for (const sel of list) {
+        const el = document.querySelector(sel);
+        if (el) {
+          const btn = el.shadowRoot?.querySelector('button') || el.querySelector('button') || el;
+          btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, view: window }));
+          try { btn.click(); } catch (err) {}
+          return true;
+        }
+      }
+      return false;
+    }
+
+    try {
+      switch (action) {
+        case 'play':
+          if (mp && typeof mp.playVideo === 'function') mp.playVideo();
+          else clickFallback(['#play-pause-button', '.play-pause-button']);
+          break;
+        case 'pause':
+          if (mp && typeof mp.pauseVideo === 'function') mp.pauseVideo();
+          else clickFallback(['#play-pause-button', '.play-pause-button']);
+          break;
+        case 'play-pause':
+          if (mp && typeof mp.getPlayerState === 'function') {
+            const state = mp.getPlayerState();
+            if (state === 1 || state === 3) mp.pauseVideo();
+            else mp.playVideo();
+          } else {
+            clickFallback(['#play-pause-button', '.play-pause-button']);
+          }
+          break;
+        case 'next':
+          if (mp && typeof mp.nextVideo === 'function') {
+            mp.nextVideo();
+          } else {
+            clickFallback(['tp-yt-paper-icon-button.next-button', '.next-button', '#next-button']);
+          }
+          break;
+        case 'prev':
+          if (mp && typeof mp.previousVideo === 'function') {
+            mp.previousVideo();
+          } else {
+            clickFallback(['tp-yt-paper-icon-button.previous-button', '.previous-button', '#previous-button']);
+          }
+          break;
+        case 'seek':
+          if (mp && typeof mp.seekTo === 'function') {
+            const dur = mp.getDuration() || 0;
+            if (dur > 0 && typeof value === 'number') {
+              mp.seekTo((value / 100) * dur, true);
+            }
+          }
+          break;
+        case 'volume':
+          if (mp && typeof mp.setVolume === 'function' && typeof value === 'number') {
+            mp.setVolume(value);
+            if (typeof mp.isMuted === 'function' && mp.isMuted() && value > 0) {
+              mp.unMute();
+            }
+          }
+          break;
+        case 'mute-toggle':
+          if (mp && typeof mp.isMuted === 'function') {
+            if (mp.isMuted()) mp.unMute();
+            else mp.mute();
+          }
+          break;
+      }
+    } catch (err) {
+      console.warn('[YTM Bridge] Erreur contrôle player:', err);
+    }
+  });
+
   // Exécution immédiate et périodique
   runSync();
   setInterval(runSync, 800);

@@ -3,7 +3,7 @@
 (function () {
   'use strict';
 
-  const browser = globalThis.chrome || globalThis.browser;
+  const browser = globalThis.browser || globalThis.chrome;
 
   // ==========================================
   // 1. Thème et Effet de Flou d'Arrière-Plan
@@ -200,7 +200,17 @@
   function clickFirst(selectors) {
     for (const sel of selectors) {
       const el = document.querySelector(sel);
-      if (el) { el.click(); return true; }
+      if (el) {
+        const btn = el.shadowRoot?.querySelector('button') || el.querySelector('button') || el;
+        btn.dispatchEvent(new MouseEvent('click', {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          view: window
+        }));
+        try { btn.click(); } catch (e) {}
+        return true;
+      }
     }
     return false;
   }
@@ -227,27 +237,45 @@
   // Pont page pour playerApi si accessible
   function callPlayerAction(action, value) {
     const video = document.querySelector('video');
+
+    // 1. Toujours notifier le MAIN-world (queue-bridge) qui a accès direct à movie_player sans restriction Firefox
+    try {
+      window.dispatchEvent(new CustomEvent('ytm-player-control', { detail: { action, value } }));
+    } catch (e) {}
+
     switch (action) {
       case 'play':
-        if (video) video.play();
-        break;
       case 'pause':
-        if (video) video.pause();
-        break;
       case 'play-pause':
-        if (video) {
-          if (video.paused) video.play(); else video.pause();
-        } else {
-          clickFirst(['#play-pause-button', '.play-pause-button']);
+        if (!clickFirst([
+          '#play-pause-button',
+          '.play-pause-button',
+          'ytmusic-player-bar #play-pause-button'
+        ])) {
+          if (video) {
+            if (video.paused) video.play().catch(() => {}); else video.pause();
+          } else {
+            dispatchHotkey({ key: 'k', code: 'KeyK', keyCode: 75 });
+          }
         }
         break;
       case 'next':
-        if (!clickFirst(['tp-yt-paper-icon-button.next-button', '.ytmusic-player-bar.next-button', '.next-button'])) {
+        if (!clickFirst([
+          'tp-yt-paper-icon-button.next-button',
+          '.next-button',
+          '#next-button',
+          'ytmusic-player-bar .next-button'
+        ])) {
           dispatchHotkey({ key: 'J', code: 'KeyJ', keyCode: 74, shiftKey: true });
         }
         break;
       case 'prev':
-        if (!clickFirst(['tp-yt-paper-icon-button.previous-button', '.ytmusic-player-bar.previous-button', '.previous-button'])) {
+        if (!clickFirst([
+          'tp-yt-paper-icon-button.previous-button',
+          '.previous-button',
+          '#previous-button',
+          'ytmusic-player-bar .previous-button'
+        ])) {
           dispatchHotkey({ key: 'P', code: 'KeyP', keyCode: 80, shiftKey: true });
         }
         break;
