@@ -58,7 +58,8 @@
         "content-styles.css",
         "pip.css",
         "qrcode.min.js",
-        "peerjs.min.js"
+        "peerjs.min.js",
+        "queue-bridge.js"
       ],
       "matches": [
         "*://music.youtube.com/*"

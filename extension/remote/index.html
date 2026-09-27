@@ -1211,13 +1211,18 @@
         const row = document.createElement('div');
         row.className = 'queue-item' + (item.isCurrent ? ' current' : '');
 
-        if (item.thumbnail) {
+        const thumbUrl = item.thumbnail || (item.videoId ? `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg` : '');
+        if (thumbUrl) {
           const img = document.createElement('img');
           img.className = 'queue-thumb';
-          img.src = item.thumbnail;
+          img.src = thumbUrl;
           img.loading = 'lazy';
           img.onerror = () => {
-            img.style.display = 'none';
+            if (item.videoId && !img.src.includes('ytimg.com')) {
+              img.src = `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg`;
+            } else {
+              img.outerHTML = '<div class="queue-thumb" style="display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.06);"><svg viewBox="0 0 24 24" width="18" height="18" fill="rgba(255,255,255,0.3)"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg></div>';
+            }
           };
           row.appendChild(img);
         } else {

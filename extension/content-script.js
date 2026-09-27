@@ -177,6 +177,24 @@
   });
 
   // ==========================================
+  // Injection du Pont Main-World (Queue & Vignettes 100%)
+  // ==========================================
+  function injectQueueBridge() {
+    if (document.getElementById('ytm-queue-bridge-script')) return;
+    try {
+      const script = document.createElement('script');
+      script.id = 'ytm-queue-bridge-script';
+      script.src = browser.runtime.getURL('queue-bridge.js');
+      script.async = false;
+      (document.head || document.documentElement).appendChild(script);
+    } catch (e) {
+      console.warn('[YTM Player] Impossible d\'injecter queue-bridge:', e);
+    }
+  }
+  injectQueueBridge();
+  document.addEventListener('DOMContentLoaded', injectQueueBridge);
+
+  // ==========================================
   // 2. Contrôle de YouTube Music (DOM & Fallbacks)
   // ==========================================
   function clickFirst(selectors) {
@@ -285,6 +303,9 @@
         }
         break;
       case 'play-queue-index': {
+        try {
+          window.dispatchEvent(new CustomEvent('ytm-play-index', { detail: value }));
+        } catch (e) {}
         const queueItems = Array.from(document.querySelectorAll('ytmusic-player-queue-item'));
         if (queueItems && queueItems[value]) {
           const target = queueItems[value];
@@ -405,10 +426,24 @@
   const queueThumbCache = new Map();
 
   function extractQueueThumbnail(el, title, artist) {
+    // 1. Attribut directement extrait par le bridge MAIN-world
+    const directThumb = el.getAttribute('data-extracted-thumb');
+    if (directThumb && directThumb.startsWith('http')) {
+      return directThumb;
+    }
+
+    const directVideoId = el.getAttribute('data-video-id');
+    if (directVideoId) {
+      const ytThumb = `https://i.ytimg.com/vi/${directVideoId}/mqdefault.jpg`;
+      return ytThumb;
+    }
+
+    // 2. Image native si déjà chargée dans le DOM
     let thumb = '';
     const imgEl = el.querySelector('img');
     if (imgEl) {
       thumb = imgEl.currentSrc || imgEl.src || imgEl.getAttribute('src') || imgEl.getAttribute('data-src') || '';
+      if (thumb.startsWith('//')) thumb = 'https:' + thumb;
       if (thumb.startsWith('data:image') || thumb.includes('transparent')) thumb = '';
     }
 
@@ -416,11 +451,12 @@
       const shadow = el.querySelector('yt-img-shadow');
       if (shadow) {
         thumb = shadow.getAttribute('src') || shadow.getAttribute('data-src') || '';
+        if (thumb.startsWith('//')) thumb = 'https:' + thumb;
         if (thumb.startsWith('data:image') || thumb.includes('transparent')) thumb = '';
       }
     }
 
-    // Extraction du videoId depuis les liens pour les images non encore chargées (au-delà de 14)
+    // 3. Extraction du videoId depuis les liens ou data-video-id
     let videoId = '';
     const linkEl = el.querySelector('a[href*="watch?v="], a[href*="watch\\?v="]') || el.querySelector('a[href*="v="]');
     if (linkEl && linkEl.href) {
@@ -460,6 +496,33 @@
   }
 
   function readUpcomingQueue() {
+    // 1. Priorité au cache global complet fourni par queue-bridge.js
+    const cacheEl = document.getElementById('ytm-queue-cache-data');
+    if (cacheEl && cacheEl.textContent) {
+      try {
+        const cachedList = JSON.parse(cacheEl.textContent);
+        if (Array.isArray(cachedList) && cachedList.length > 0) {
+          const domItems = Array.from(document.querySelectorAll('ytmusic-player-queue-item'));
+          let selectedIdx = domItems.findIndex(el => el.hasAttribute('selected') || el.classList.contains('selected') || el.getAttribute('play-button-state') === 'playing');
+
+          if (selectedIdx === -1) {
+            const currentTitle = readTrackMeta().title;
+            if (currentTitle) {
+              selectedIdx = cachedList.findIndex(item => item.title && item.title.toLowerCase() === currentTitle.toLowerCase());
+            }
+          }
+
+          if (selectedIdx !== -1) {
+            cachedList.forEach((it, idx) => {
+              it.isCurrent = (idx === selectedIdx);
+            });
+          }
+          return cachedList;
+        }
+      } catch (e) {}
+    }
+
+    // 2. Fallback lecture du DOM
     const queueItems = Array.from(document.querySelectorAll('ytmusic-player-queue-item'));
     if (queueItems.length > 0) {
       let currentIndex = queueItems.findIndex(el => el.hasAttribute('selected') || el.classList.contains('selected'));
