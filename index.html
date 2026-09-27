@@ -1076,7 +1076,21 @@
           el.connDot.className = 'status-dot disconnected';
           el.connText.textContent = 'Erreur réseau : reconnexion…';
           addLog('ERR', 'Erreur PeerJS: ' + (err?.type || err?.message || err), '#ff3366');
-          setTimeout(connectToPeerHost, 3000);
+          if (peer.disconnected && !peer.destroyed) {
+            addLog('CONN', 'Reconnexion au serveur de signalisation…', '#ffbb00');
+            peer.reconnect();
+          } else if (peer.destroyed) {
+            initWebRTCClient();
+          } else {
+            setTimeout(connectToPeerHost, 3000);
+          }
+        });
+
+        peer.on('disconnected', () => {
+          addLog('CONN', 'Peer déconnecté du serveur de signalisation. Reconnexion…', '#ffbb00');
+          if (!peer.destroyed) {
+            peer.reconnect();
+          }
         });
       } catch (e) {
         console.error('PeerJS init failed:', e);
@@ -1086,8 +1100,15 @@
 
     function connectToPeerHost() {
       if (!peer || peer.destroyed) return;
+      if (peer.disconnected) {
+        peer.reconnect();
+        return;
+      }
       addLog('CONN', 'Tentative de connexion à ' + targetRoomId + '…', '#ffbb00');
-      dataChannel = peer.connect(targetRoomId, { reliable: true });
+      dataChannel = peer.connect(targetRoomId, {
+        reliable: true,
+        serialization: 'json'
+      });
 
       dataChannel.on('open', () => {
         el.connDot.className = 'status-dot connected';

@@ -1875,7 +1875,12 @@
           } catch (e) {}
         });
 
-        conn.on('data', async (payload) => {
+        conn.on('data', async (rawPayload) => {
+          if (!rawPayload) return;
+          let payload = rawPayload;
+          if (typeof payload === 'string') {
+            try { payload = JSON.parse(payload); } catch (e) {}
+          }
           if (!payload) return;
 
           if (payload.action === 'search') {
@@ -1936,6 +1941,14 @@
           ytmRoomId = 'ytm-' + Math.random().toString(36).substring(2, 8) + '-' + Date.now().toString(36).slice(-4);
           sessionStorage.setItem('ytmp_p2p_room', ytmRoomId);
           setTimeout(initWebRTCHost, 1000);
+        } else if (peerHost.disconnected && !peerHost.destroyed) {
+          peerHost.reconnect();
+        }
+      });
+
+      peerHost.on('disconnected', () => {
+        if (!peerHost.destroyed) {
+          peerHost.reconnect();
         }
       });
     } catch (e) {
