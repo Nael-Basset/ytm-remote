@@ -1147,13 +1147,15 @@
         btnQueue.addEventListener('click', (e) => {
           e.stopPropagation();
           vibrate();
-          sendAction('queue-track', {
+          const trackPayload = {
             videoId: item.videoId,
             title: item.title,
             artist: item.artist,
             duration: item.duration,
             thumbnail: thumb
-          });
+          };
+          sendAction('queue-track', trackPayload);
+
           btnQueue.classList.add('added');
           btnQueue.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>';
           btnQueue.title = 'Ajouté à la file d\'attente !';
@@ -1162,6 +1164,18 @@
             btnQueue.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
             btnQueue.title = 'Ajouter à la file d\'attente';
           }, 2000);
+
+          // Ajout immédiat dans l'affichage local de la queue
+          currentQueue.push({
+            index: currentQueue.length,
+            title: item.title,
+            artist: item.artist,
+            duration: item.duration,
+            thumbnail: thumb,
+            videoId: item.videoId,
+            isCurrent: false
+          });
+          renderQueue(currentQueue);
         });
 
         actions.appendChild(btnPlay);
@@ -1568,8 +1582,10 @@
 
     let lastArt = '';
     let lastQueueHash = '';
+    let currentQueue = [];
 
     function renderQueue(queue) {
+      currentQueue = Array.isArray(queue) ? [...queue] : [];
       if (!Array.isArray(queue) || queue.length === 0) {
         el.queueCount.textContent = '0';
         el.queueList.innerHTML = '<div style="font-size: 12px; color: var(--text-dim); text-align: center; padding: 12px;">Aucun morceau en attente</div>';

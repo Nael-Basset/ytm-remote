@@ -324,6 +324,8 @@
         const vId = typeof value === 'string' ? value : value?.videoId;
         if (vId) {
           window.dispatchEvent(new CustomEvent('ytm-play-track', { detail: vId }));
+          setTimeout(broadcastP2PState, 200);
+          setTimeout(broadcastP2PState, 800);
         }
         break;
       }
@@ -331,6 +333,9 @@
         const vId = typeof value === 'string' ? value : value?.videoId;
         if (vId) {
           window.dispatchEvent(new CustomEvent('ytm-queue-track', { detail: value }));
+          setTimeout(broadcastP2PState, 150);
+          setTimeout(broadcastP2PState, 500);
+          setTimeout(broadcastP2PState, 1200);
         }
         break;
       }
