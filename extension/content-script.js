@@ -242,13 +242,6 @@
         }
         break;
       case 'next':
-        if (queuedNextTracks.length > 0) {
-          const nextItem = queuedNextTracks.shift();
-          const nextId = nextItem.videoId || nextItem;
-          callPlayerAction('play-track', nextId);
-          setTimeout(broadcastP2PState, 200);
-          break;
-        }
         if (!clickFirst(['tp-yt-paper-icon-button.next-button', '.ytmusic-player-bar.next-button', '.next-button'])) {
           dispatchHotkey({ key: 'J', code: 'KeyJ', keyCode: 74, shiftKey: true });
         }
@@ -554,11 +547,15 @@
     }
     if (queuedNextTracks.length === 0) return baseList;
 
+    const existingVideoIds = new Set(baseList.map(it => it.videoId).filter(Boolean));
+    const pendingToInsert = queuedNextTracks.filter(it => !existingVideoIds.has(it.videoId));
+    if (pendingToInsert.length === 0) return baseList;
+
     let curIdx = baseList.findIndex(it => it.isCurrent);
     const insertIdx = (curIdx !== -1) ? curIdx + 1 : baseList.length;
 
     const result = baseList.map(it => ({ ...it }));
-    const itemsToInsert = queuedNextTracks.map(it => ({
+    const itemsToInsert = pendingToInsert.map(it => ({
       videoId: it.videoId,
       title: it.title || 'Titre',
       artist: it.artist || '',
@@ -1673,15 +1670,6 @@
       return;
     }
 
-    if (queuedNextTracks.length > 0) {
-      const nextItem = queuedNextTracks.shift();
-      const nextId = nextItem.videoId || nextItem;
-      lastNotifiedKey = '';
-      pendingKey = '';
-      callPlayerAction('play-track', nextId);
-      return;
-    }
-
     const now = Date.now();
     if (key !== pendingKey) {
       pendingKey = key;
@@ -1944,16 +1932,7 @@
       video.addEventListener(evt, () => setTimeout(broadcastP2PState, 50));
     });
 
-    let hasTriggeredAutoNext = false;
-
     video.addEventListener('ended', () => {
-      if (!hasTriggeredAutoNext && queuedNextTracks.length > 0) {
-        hasTriggeredAutoNext = true;
-        const nextItem = queuedNextTracks.shift();
-        const nextId = nextItem.videoId || nextItem;
-        callPlayerAction('play-track', nextId);
-        setTimeout(() => { hasTriggeredAutoNext = false; }, 2500);
-      }
       setTimeout(broadcastP2PState, 200);
     });
 
@@ -1962,17 +1941,6 @@
       if (now - lastBroadcastTime > 800) {
         lastBroadcastTime = now;
         broadcastP2PState();
-      }
-
-      // Transition automatique quand le morceau en cours touche à sa fin (< 0.6s)
-      if (video.duration && video.duration > 3 && video.currentTime >= video.duration - 0.6) {
-        if (!hasTriggeredAutoNext && queuedNextTracks.length > 0) {
-          hasTriggeredAutoNext = true;
-          const nextItem = queuedNextTracks.shift();
-          const nextId = nextItem.videoId || nextItem;
-          callPlayerAction('play-track', nextId);
-          setTimeout(() => { hasTriggeredAutoNext = false; }, 2500);
-        }
       }
     });
   }
