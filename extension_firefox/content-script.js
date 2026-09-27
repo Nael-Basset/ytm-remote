@@ -245,6 +245,40 @@
   const queuedNextTracks = [];
   let currentTrackOverride = null;
 
+  function updateDOMPlayerBar(title, artist, thumbnail) {
+    try {
+      const playerBar = document.querySelector('ytmusic-player-bar');
+      if (playerBar) {
+        if (title) {
+          const titleEls = playerBar.querySelectorAll('.title.ytmusic-player-bar, .title');
+          titleEls.forEach(el => {
+            el.textContent = title;
+            el.setAttribute('title', title);
+          });
+        }
+        if (artist) {
+          const artistEls = playerBar.querySelectorAll('.subtitle.ytmusic-player-bar yt-formatted-string, .byline.ytmusic-player-bar, .subtitle yt-formatted-string');
+          artistEls.forEach(el => {
+            el.textContent = artist;
+            el.setAttribute('title', artist);
+          });
+        }
+      }
+
+      if (thumbnail) {
+        const albumArtImgs = document.querySelectorAll('#song-image img, .image.ytmusic-player-bar img');
+        albumArtImgs.forEach(img => {
+          img.src = thumbnail;
+        });
+        document.documentElement.style.setProperty('--blyrics-background-img', `url("${thumbnail}")`);
+      }
+
+      if (title) {
+        document.title = artist ? `${title} • ${artist} - YouTube Music` : `${title} - YouTube Music`;
+      }
+    } catch (e) {}
+  }
+
   // Pont page pour playerApi si accessible
   function callPlayerAction(action, value) {
     const video = document.querySelector('video');
@@ -267,6 +301,7 @@
             thumbnail: item.thumbnail || (item.videoId ? `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg` : ''),
             timestamp: Date.now()
           };
+          updateDOMPlayerBar(item.title, item.artist, item.thumbnail);
         }
         setTimeout(broadcastP2PState, 100);
         setTimeout(broadcastP2PState, 500);

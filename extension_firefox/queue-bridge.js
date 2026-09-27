@@ -160,6 +160,40 @@
     } catch (e) {}
   }
 
+  function updateDOMPlayerBar(title, artist, thumbnail) {
+    try {
+      const playerBar = document.querySelector('ytmusic-player-bar');
+      if (playerBar) {
+        if (title) {
+          const titleEls = playerBar.querySelectorAll('.title.ytmusic-player-bar, .title');
+          titleEls.forEach(el => {
+            el.textContent = title;
+            el.setAttribute('title', title);
+          });
+        }
+        if (artist) {
+          const artistEls = playerBar.querySelectorAll('.subtitle.ytmusic-player-bar yt-formatted-string, .byline.ytmusic-player-bar, .subtitle yt-formatted-string');
+          artistEls.forEach(el => {
+            el.textContent = artist;
+            el.setAttribute('title', artist);
+          });
+        }
+      }
+
+      if (thumbnail) {
+        const albumArtImgs = document.querySelectorAll('#song-image img, .image.ytmusic-player-bar img');
+        albumArtImgs.forEach(img => {
+          img.src = thumbnail;
+        });
+        document.documentElement.style.setProperty('--blyrics-background-img', `url("${thumbnail}")`);
+      }
+
+      if (title) {
+        document.title = artist ? `${title} • ${artist} - YouTube Music` : `${title} - YouTube Music`;
+      }
+    } catch (e) {}
+  }
+
   function runSync() {
     syncCurrentTrackData();
     syncDomQueueItems();
@@ -289,15 +323,28 @@
     }
   }
 
-  // Lancer directement un morceau par videoId
+  // Lancer directement un morceau par videoId ou objet de piste complet
   window.addEventListener('ytm-play-track', (e) => {
-    let videoId = typeof e.detail === 'string' ? e.detail : e.detail?.videoId;
-    if (typeof videoId === 'string' && videoId.startsWith('{')) {
-      try { videoId = JSON.parse(videoId)?.videoId || videoId; } catch (err) {}
+    let raw = e.detail;
+    if (typeof raw === 'string' && raw.startsWith('{')) {
+      try { raw = JSON.parse(raw); } catch (err) {}
     }
+    const videoId = typeof raw === 'string' ? raw : (raw?.videoId || '');
+    const title = typeof raw === 'object' ? raw?.title : '';
+    const artist = typeof raw === 'object' ? raw?.artist : '';
+    const thumbnail = typeof raw === 'object' ? (raw?.thumbnail || (videoId ? `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` : '')) : '';
+
     if (!videoId) return;
 
-    // 1. Priorité ABSOLUE : movie_player.loadVideoById (zéro déchargement de page, garde WebRTC actif)
+    // 1. Mise à jour instantanée du DOM de la barre de lecture YouTube Music sur l'écran du PC
+    if (title || artist || thumbnail) {
+      updateDOMPlayerBar(title, artist, thumbnail);
+      if (title) document.documentElement.setAttribute('data-ytm-current-title', title);
+      if (artist) document.documentElement.setAttribute('data-ytm-current-artist', artist);
+      if (videoId) document.documentElement.setAttribute('data-ytm-current-videoid', videoId);
+    }
+
+    // 2. Lancement immédiat de la lecture audio via movie_player
     const mp = document.getElementById('movie_player');
     if (mp && typeof mp.loadVideoById === 'function') {
       try {
@@ -310,49 +357,19 @@
       } catch (err) {
         console.warn('[YTM Bridge] loadVideoById error:', err);
       }
-
-      // Notifier l'interface YouTube Music pour actualiser la barre de contrôle et le titre affiché
-      try {
-        const endpoint = { watchEndpoint: { videoId: videoId } };
-        const app = document.querySelector('ytmusic-app');
-        if (app && typeof app.resolveServiceEndpoint_ === 'function') {
-          app.resolveServiceEndpoint_(endpoint);
-        } else {
-          document.dispatchEvent(new CustomEvent('yt-action', {
-            bubbles: true,
-            composed: true,
-            detail: { actionName: 'yt-service-endpoint', args: [endpoint] }
-          }));
-        }
-      } catch (e) {}
-
-      runSync();
-      setTimeout(runSync, 200);
-      setTimeout(runSync, 600);
-      return;
     }
 
+    // 3. Navigation SPA officielle YouTube Music pour synchroniser l'état interne
     try {
-      // 2. Navigation SPA native YouTube Music (fallback)
       const app = document.querySelector('ytmusic-app');
       if (app && typeof app.navigate_ === 'function') {
         app.navigate_('/watch?v=' + videoId);
-        setTimeout(runSync, 400);
-        return;
       }
+    } catch (e) {}
 
-      // 3. Clic sur un lien avec href watch intercepté par Polymer
-      const link = document.createElement('a');
-      link.href = '/watch?v=' + videoId;
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-      link.remove();
-      setTimeout(runSync, 400);
-      return;
-    } catch (err) {}
-
-    window.location.href = 'https://music.youtube.com/watch?v=' + videoId;
+    runSync();
+    setTimeout(runSync, 200);
+    setTimeout(runSync, 600);
   });
 
   // Ajouter un morceau à la file d'attente
@@ -521,7 +538,19 @@
           }
           break;
         case 'play-track': {
-          const vId = typeof value === 'string' ? value : value?.videoId;
+          const item = (typeof value === 'object' && value) ? value : { videoId: value };
+          const vId = item.videoId;
+          const title = item.title || '';
+          const artist = item.artist || '';
+          const thumbnail = item.thumbnail || (vId ? `https://i.ytimg.com/vi/${vId}/mqdefault.jpg` : '');
+
+          if (title || artist || thumbnail) {
+            updateDOMPlayerBar(title, artist, thumbnail);
+            if (title) document.documentElement.setAttribute('data-ytm-current-title', title);
+            if (artist) document.documentElement.setAttribute('data-ytm-current-artist', artist);
+            if (vId) document.documentElement.setAttribute('data-ytm-current-videoid', vId);
+          }
+
           if (vId && mp && typeof mp.loadVideoById === 'function') {
             try {
               mp.loadVideoById(vId);
@@ -530,15 +559,29 @@
                 setTimeout(() => { try { mp.playVideo(); } catch (e) {} }, 80);
                 setTimeout(() => { try { mp.playVideo(); } catch (e) {} }, 250);
               }
-              runSync();
             } catch (err) {}
           }
+
+          // Navigation SPA interne YouTube Music
+          if (vId) {
+            try {
+              const app = document.querySelector('ytmusic-app');
+              if (app && typeof app.navigate_ === 'function') {
+                app.navigate_('/watch?v=' + vId);
+              }
+            } catch (err) {}
+          }
+
+          runSync();
+          setTimeout(runSync, 200);
+          setTimeout(runSync, 600);
           break;
         }
         case 'play-queue-index': {
-          if (typeof value === 'number' && mp && typeof mp.playVideoAt === 'function') {
+          const rawIdx = (typeof value === 'object' && value) ? value.index : value;
+          if (typeof rawIdx === 'number' && mp && typeof mp.playVideoAt === 'function') {
             try {
-              mp.playVideoAt(value);
+              mp.playVideoAt(rawIdx);
               runSync();
             } catch (err) {}
           }
