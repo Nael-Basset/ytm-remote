@@ -899,6 +899,15 @@
   </div>
 
   <script>
+    if (typeof TextDecoder !== 'undefined') {
+      const origDecode = TextDecoder.prototype.decode;
+      TextDecoder.prototype.decode = function (input, options) {
+        if (typeof input === 'string') return input;
+        if (!input) return '';
+        return origDecode.call(this, input, options);
+      };
+    }
+
     let isUserSeeking = false;
     let isUserVolume = false;
 
@@ -1043,20 +1052,21 @@
     function sendP2PMessage(payload) {
       if (!payload) return false;
       let sent = false;
-      // 1. Envoi via PeerJS DataConnection
+      // 1. Envoi prioritaire via PeerJS DataConnection (sérialisation officielle)
       if (dataChannel && dataChannel.open) {
         try {
           dataChannel.send(payload);
           sent = true;
         } catch (e) {}
       }
-      // 2. Envoi direct via RTCDataChannel natif (contourne le bug Firefox WebRTC)
-      try {
-        if (dataChannel && dataChannel.dataChannel && dataChannel.dataChannel.readyState === 'open') {
-          dataChannel.dataChannel.send(JSON.stringify(payload));
+      // 2. Envoi direct via RTCDataChannel natif uniquement si PeerJS n'a pas pu émettre
+      if (!sent && dataChannel && dataChannel.dataChannel && dataChannel.dataChannel.readyState === 'open') {
+        try {
+          const encoded = new TextEncoder().encode(JSON.stringify(payload));
+          dataChannel.dataChannel.send(encoded);
           sent = true;
-        }
-      } catch (e) {}
+        } catch (e) {}
+      }
       return sent;
     }
 

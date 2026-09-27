@@ -3,6 +3,16 @@
 (function () {
   'use strict';
 
+  // Sécurisation globale de TextDecoder contre les chaînes ou types inattendus dans PeerJS
+  if (typeof TextDecoder !== 'undefined') {
+    const origDecode = TextDecoder.prototype.decode;
+    TextDecoder.prototype.decode = function (input, options) {
+      if (typeof input === 'string') return input;
+      if (!input) return '';
+      return origDecode.call(this, input, options);
+    };
+  }
+
   const browser = globalThis.browser || globalThis.chrome;
 
   // ==========================================
