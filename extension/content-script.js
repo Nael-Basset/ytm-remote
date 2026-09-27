@@ -215,6 +215,8 @@
     }
   }
 
+  const queuedNextTracks = [];
+
   // Pont page pour playerApi si accessible
   function callPlayerAction(action, value) {
     const video = document.querySelector('video');
@@ -233,6 +235,12 @@
         }
         break;
       case 'next':
+        if (queuedNextTracks.length > 0) {
+          const nextId = queuedNextTracks.shift();
+          window.dispatchEvent(new CustomEvent('ytm-play-track', { detail: nextId }));
+          setTimeout(broadcastP2PState, 200);
+          break;
+        }
         if (!clickFirst(['tp-yt-paper-icon-button.next-button', '.ytmusic-player-bar.next-button', '.next-button'])) {
           dispatchHotkey({ key: 'J', code: 'KeyJ', keyCode: 74, shiftKey: true });
         }
@@ -323,6 +331,7 @@
       case 'play-track': {
         const vId = typeof value === 'string' ? value : value?.videoId;
         if (vId) {
+          queuedNextTracks.length = 0;
           window.dispatchEvent(new CustomEvent('ytm-play-track', { detail: vId }));
           setTimeout(broadcastP2PState, 200);
           setTimeout(broadcastP2PState, 800);
@@ -332,6 +341,7 @@
       case 'queue-track': {
         const vId = typeof value === 'string' ? value : value?.videoId;
         if (vId) {
+          queuedNextTracks.push(vId);
           window.dispatchEvent(new CustomEvent('ytm-queue-track', { detail: value }));
           setTimeout(broadcastP2PState, 150);
           setTimeout(broadcastP2PState, 500);
@@ -1879,6 +1889,14 @@
 
     ['play', 'pause', 'volumechange', 'ratechange', 'seeked'].forEach(evt => {
       video.addEventListener(evt, () => setTimeout(broadcastP2PState, 50));
+    });
+
+    video.addEventListener('ended', () => {
+      if (queuedNextTracks.length > 0) {
+        const nextId = queuedNextTracks.shift();
+        callPlayerAction('play-track', nextId);
+      }
+      setTimeout(broadcastP2PState, 200);
     });
 
     video.addEventListener('timeupdate', () => {

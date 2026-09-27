@@ -228,17 +228,65 @@
       selected: false
     };
 
-    // 2. Injecter dans le modèle Polymer de la file d'attente
+    // 2. Déclencher les actions natives YouTube Music (queueAddEndpoint)
+    const nativeEndpoint = {
+      queueAddEndpoint: {
+        queueTarget: {
+          videoId: videoId,
+          onEmptyQueue: {
+            watchEndpoint: { videoId: videoId }
+          }
+        },
+        queueInsertPosition: 'INSERT_AFTER_CURRENT_VIDEO'
+      }
+    };
+
+    const actionTargets = [
+      document.querySelector('ytmusic-app'),
+      document.querySelector('ytmusic-player-bar'),
+      document.querySelector('ytmusic-player-queue'),
+      document,
+      window
+    ].filter(Boolean);
+
+    for (const t of actionTargets) {
+      try {
+        t.dispatchEvent(new CustomEvent('yt-action', {
+          bubbles: true,
+          composed: true,
+          detail: {
+            actionName: 'yt-service-endpoint',
+            args: [nativeEndpoint]
+          }
+        }));
+      } catch (e) {}
+
+      try {
+        t.dispatchEvent(new CustomEvent('yt-service-endpoint', {
+          bubbles: true,
+          composed: true,
+          detail: nativeEndpoint
+        }));
+      } catch (e) {}
+    }
+
+    // 3. Insérer dans le modèle Polymer de file d'attente juste APRÈS le morceau en cours
     const queueEl = document.querySelector('ytmusic-player-queue');
     if (queueEl) {
       const qData = queueEl.data || queueEl.queueData || queueEl.__data?.data || queueEl.__data?.queueData;
       if (qData) {
         if (!Array.isArray(qData.items)) qData.items = [];
-        qData.items.push({ playlistPanelVideoRenderer: renderer });
+        let curIdx = qData.items.findIndex(it => {
+          const r = it?.playlistPanelVideoRenderer || it;
+          return r?.selected;
+        });
+        const insertIdx = (curIdx !== -1) ? curIdx + 1 : qData.items.length;
+        qData.items.splice(insertIdx, 0, { playlistPanelVideoRenderer: renderer });
+
         if (typeof queueEl.notifySplices === 'function') {
           try {
             queueEl.notifySplices('data.items', [{
-              index: qData.items.length - 1,
+              index: insertIdx,
               removed: [],
               addedCount: 1,
               object: qData.items,
@@ -251,40 +299,18 @@
       if (Array.isArray(queueEl.items)) {
         queueEl.items.push({ playlistPanelVideoRenderer: renderer });
       }
-
-      // Ajouter l'élément dans le DOM de YouTube Music
-      try {
-        const domContainer = queueEl.querySelector('#contents') || queueEl;
-        if (domContainer) {
-          const domItem = document.createElement('ytmusic-player-queue-item');
-          domItem.data = { playlistPanelVideoRenderer: renderer };
-          domItem.setAttribute('data-video-id', videoId);
-          domItem.setAttribute('data-extracted-thumb', thumbnail);
-          domContainer.appendChild(domItem);
-        }
-      } catch (domErr) {}
     }
 
-    // 3. Prévenir le lecteur vidéo (queueing natif)
-    try {
-      const playerApi = document.querySelector('ytmusic-player-page')?.playerApi_ || document.querySelector('ytmusic-app')?.playerUiState_?.player;
-      if (playerApi) {
-        if (typeof playerApi.cueVideoById === 'function') {
-          playerApi.cueVideoById(videoId);
-        } else if (typeof playerApi.addToQueue === 'function') {
-          playerApi.addToQueue(videoId);
-        }
-      }
-    } catch (pErr) {}
-
-    // 4. Mettre à jour le cache JSON immédiatement
+    // 4. Mettre à jour immédiatement le cache JSON local de la queue
     try {
       let cacheTag = document.getElementById('ytm-queue-cache-data');
       if (cacheTag && cacheTag.textContent) {
         const list = JSON.parse(cacheTag.textContent);
         if (Array.isArray(list)) {
-          list.push({
-            index: list.length,
+          let curIdx = list.findIndex(it => it.isCurrent);
+          const insertIdx = (curIdx !== -1) ? curIdx + 1 : list.length;
+          list.splice(insertIdx, 0, {
+            index: insertIdx,
             title: title,
             artist: artist,
             duration: duration,
@@ -292,10 +318,19 @@
             videoId: videoId,
             isCurrent: false
           });
+          list.forEach((item, idx) => { item.index = idx; });
           cacheTag.textContent = JSON.stringify(list);
         }
       }
     } catch (cErr) {}
+
+    // 5. Informer le lecteur sous-jacent
+    try {
+      const playerApi = document.querySelector('ytmusic-player-page')?.playerApi_ || document.querySelector('ytmusic-app')?.playerUiState_?.player;
+      if (playerApi && typeof playerApi.cueVideoById === 'function') {
+        playerApi.cueVideoById(videoId);
+      }
+    } catch (pErr) {}
 
     runSync();
     setTimeout(runSync, 300);
