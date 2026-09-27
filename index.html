@@ -367,26 +367,33 @@
       -webkit-text-fill-color: #ffffff;
       filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.25));
     }
-    /* Mode Plein Écran pour les paroles */
+    /* Mode Plein Écran pour les paroles (Ancrage parfait sans glitch) */
     .lyrics-section.is-fullscreen {
       position: fixed;
-      inset: 0;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
       z-index: 99999;
-      width: 100vw;
-      height: 100vh;
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
       max-width: none;
       border-radius: 0;
       border: none;
-      background: rgba(10, 11, 15, 0.96);
+      background: rgba(10, 11, 15, 0.98);
       backdrop-filter: blur(50px);
       margin: 0;
-      padding: max(20px, env(safe-area-inset-top, 20px)) 20px max(24px, env(safe-area-inset-bottom, 24px));
+      padding: max(16px, env(safe-area-inset-top, 16px)) 16px 0;
       display: flex !important;
       flex-direction: column;
+      box-sizing: border-box;
+      overflow: hidden;
     }
     .lyrics-section.is-fullscreen .lyrics-header {
-      padding-bottom: 12px;
-      margin-bottom: 16px;
+      flex-shrink: 0;
+      padding-bottom: 10px;
+      margin-bottom: 10px;
     }
     .lyrics-section.is-fullscreen .lyrics-title-text {
       font-size: 15px;
@@ -399,39 +406,46 @@
     }
     .lyrics-section.is-fullscreen .lyrics-scroll {
       max-height: none;
-      flex: 1;
-      padding: 10px 4px 60px;
+      flex: 1 1 0;
+      min-height: 0; /* Empêche le contenu de pousser les boutons hors écran */
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 10px 4px 20px;
     }
     .lyrics-section.is-fullscreen .lyric-line {
       font-size: 24px;
       line-height: 1.45;
-      padding: 12px 14px;
+      padding: 10px 14px;
     }
     .lyrics-section.is-fullscreen .lyric-line.active {
-      font-size: 30px;
+      font-size: 24px;
+      font-weight: 800;
       color: #ffffff;
-      text-shadow: 0 0 24px rgba(255, 255, 255, 0.7);
-      background: rgba(255, 255, 255, 0.08);
-      border-radius: 14px;
+      text-shadow: 0 0 20px rgba(255, 255, 255, 0.6);
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
     }
     .lyrics-fullscreen-controls {
       display: none;
     }
     .lyrics-section.is-fullscreen .lyrics-fullscreen-controls {
       display: flex;
+      flex-shrink: 0;
       align-items: center;
       justify-content: center;
       gap: 28px;
-      padding: 12px 0 6px;
+      padding: 12px 0 max(16px, env(safe-area-inset-bottom, 16px));
       border-top: 1px solid var(--border);
+      background: rgba(10, 11, 15, 0.85);
+      backdrop-filter: blur(20px);
     }
     .btn-fs-nav {
       background: transparent;
       border: none;
       color: var(--text);
       cursor: pointer;
-      width: 44px;
-      height: 44px;
+      width: 48px;
+      height: 48px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -441,8 +455,8 @@
       background: var(--accent);
       color: #fff;
       border: none;
-      width: 52px;
-      height: 52px;
+      width: 56px;
+      height: 56px;
       border-radius: 50%;
       display: flex;
       align-items: center;
@@ -863,17 +877,18 @@
       }
 
       if (isFullscreenLyrics) {
-        try {
-          if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
-            document.documentElement.requestFullscreen().catch(() => {});
+        requestAnimationFrame(() => {
+          if (currentActiveLyricIndex >= 0 && el.lyricsList.children[currentActiveLyricIndex]) {
+            const activeEl = el.lyricsList.children[currentActiveLyricIndex];
+            const scrollContainer = el.lyricsScroll;
+            if (scrollContainer) {
+              const scrollRect = scrollContainer.getBoundingClientRect();
+              const lineRect = activeEl.getBoundingClientRect();
+              const offset = (lineRect.top - scrollRect.top) - (scrollRect.height / 2) + (lineRect.height / 2);
+              scrollContainer.scrollBy({ top: offset, behavior: 'instant' });
+            }
           }
-        } catch (e) {}
-      } else {
-        try {
-          if (document.exitFullscreen && document.fullscreenElement) {
-            document.exitFullscreen().catch(() => {});
-          }
-        } catch (e) {}
+        });
       }
     }
 
