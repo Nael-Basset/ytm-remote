@@ -1337,7 +1337,20 @@
         btnPlay.addEventListener('click', (e) => {
           e.stopPropagation();
           vibrate();
-          sendAction('play-track', item.videoId);
+          const trackData = {
+            videoId: item.videoId,
+            title: item.title,
+            artist: item.artist,
+            duration: item.duration,
+            thumbnail: thumb
+          };
+          applyState({
+            title: item.title,
+            artist: item.artist,
+            albumArt: thumb,
+            isPlaying: true
+          });
+          sendAction('play-track', trackData);
         });
 
         // Bouton 2 : Ajouter à la file d'attente
@@ -1849,7 +1862,22 @@
         }
 
         row.addEventListener('click', () => {
-          sendAction('play-queue-index', item.index);
+          vibrate();
+          const trackData = {
+            index: item.index,
+            videoId: item.videoId,
+            title: item.title,
+            artist: item.artist,
+            duration: item.duration,
+            thumbnail: thumbUrl
+          };
+          applyState({
+            title: item.title,
+            artist: item.artist,
+            albumArt: thumbUrl,
+            isPlaying: true
+          });
+          sendAction('play-queue-index', trackData);
         });
 
         el.queueList.appendChild(row);

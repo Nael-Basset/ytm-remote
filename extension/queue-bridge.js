@@ -143,7 +143,25 @@
     } catch (e) {}
   }
 
+  function syncCurrentTrackData() {
+    try {
+      const mp = document.getElementById('movie_player');
+      if (mp && typeof mp.getVideoData === 'function') {
+        const data = mp.getVideoData();
+        if (data && (data.title || data.video_id)) {
+          const videoId = data.video_id || '';
+          const title = data.title || '';
+          const artist = data.author || '';
+          if (title) document.documentElement.setAttribute('data-ytm-current-title', title);
+          if (artist) document.documentElement.setAttribute('data-ytm-current-artist', artist);
+          if (videoId) document.documentElement.setAttribute('data-ytm-current-videoid', videoId);
+        }
+      }
+    } catch (e) {}
+  }
+
   function runSync() {
+    syncCurrentTrackData();
     syncDomQueueItems();
     syncGlobalQueue();
   }
@@ -289,12 +307,29 @@
           setTimeout(() => { try { mp.playVideo(); } catch (e) {} }, 80);
           setTimeout(() => { try { mp.playVideo(); } catch (e) {} }, 250);
         }
-        runSync();
-        setTimeout(runSync, 400);
-        return;
       } catch (err) {
         console.warn('[YTM Bridge] loadVideoById error:', err);
       }
+
+      // Notifier l'interface YouTube Music pour actualiser la barre de contrôle et le titre affiché
+      try {
+        const endpoint = { watchEndpoint: { videoId: videoId } };
+        const app = document.querySelector('ytmusic-app');
+        if (app && typeof app.resolveServiceEndpoint_ === 'function') {
+          app.resolveServiceEndpoint_(endpoint);
+        } else {
+          document.dispatchEvent(new CustomEvent('yt-action', {
+            bubbles: true,
+            composed: true,
+            detail: { actionName: 'yt-service-endpoint', args: [endpoint] }
+          }));
+        }
+      } catch (e) {}
+
+      runSync();
+      setTimeout(runSync, 200);
+      setTimeout(runSync, 600);
+      return;
     }
 
     try {

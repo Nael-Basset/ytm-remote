@@ -233,6 +233,7 @@
   });
 
   const queuedNextTracks = [];
+  let currentTrackOverride = null;
 
   // Pont page pour playerApi si accessible
   function callPlayerAction(action, value) {
@@ -246,6 +247,20 @@
 
     // Si movie_player existe, queue-bridge le contrôle de manière native et fiable (évite les conflits d'inversion)
     if (hasMoviePlayer && ['play', 'pause', 'play-pause', 'next', 'prev', 'seek', 'volume', 'mute-toggle', 'play-track'].includes(action)) {
+      if (action === 'play-track') {
+        const item = (typeof value === 'object' && value) ? value : { videoId: value };
+        if (item.title) {
+          currentTrackOverride = {
+            videoId: item.videoId || '',
+            title: item.title,
+            artist: item.artist || '',
+            thumbnail: item.thumbnail || (item.videoId ? `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg` : ''),
+            timestamp: Date.now()
+          };
+        }
+        setTimeout(broadcastP2PState, 100);
+        setTimeout(broadcastP2PState, 500);
+      }
       return;
     }
 
@@ -347,35 +362,47 @@
         break;
       case 'play-queue-index': {
         const fullQueue = readUpcomingQueue();
-        const targetItem = fullQueue && fullQueue[value];
+        const rawIdx = (typeof value === 'object' && value) ? value.index : value;
+        const targetItem = (typeof value === 'object' && value && value.videoId) ? value : (fullQueue && fullQueue[rawIdx]);
         if (targetItem && targetItem.videoId) {
-          // Si on a un videoId directement disponible, on lance immédiatement la vidéo
-          callPlayerAction('play-track', targetItem.videoId);
+          callPlayerAction('play-track', targetItem);
           break;
         }
         try {
-          window.dispatchEvent(new CustomEvent('ytm-play-index', { detail: value }));
+          window.dispatchEvent(new CustomEvent('ytm-play-index', { detail: rawIdx }));
         } catch (e) {}
         const queueItems = Array.from(document.querySelectorAll('ytmusic-player-queue-item'));
-        if (queueItems && queueItems[value]) {
-          const target = queueItems[value];
+        if (queueItems && queueItems[rawIdx]) {
+          const target = queueItems[rawIdx];
           const btn = target.querySelector('.play-button, ytmusic-play-button-renderer, .song-title') || target;
           btn.click();
         } else {
           const listItems = Array.from(document.querySelectorAll('ytmusic-responsive-list-item-renderer'));
-          if (listItems && listItems[value]) {
-            const btn = listItems[value].querySelector('.play-button, ytmusic-play-button-renderer, .title') || listItems[value];
+          if (listItems && listItems[rawIdx]) {
+            const btn = listItems[rawIdx].querySelector('.play-button, ytmusic-play-button-renderer, .title') || listItems[rawIdx];
             btn.click();
           }
         }
         break;
       }
       case 'play-track': {
-        const vId = typeof value === 'string' ? value : value?.videoId;
+        const item = (typeof value === 'object' && value) ? value : { videoId: value };
+        const vId = item.videoId;
         if (vId) {
+          if (item.title) {
+            currentTrackOverride = {
+              videoId: vId,
+              title: item.title,
+              artist: item.artist || '',
+              thumbnail: item.thumbnail || `https://i.ytimg.com/vi/${vId}/mqdefault.jpg`,
+              timestamp: Date.now()
+            };
+          }
           window.dispatchEvent(new CustomEvent('ytm-play-track', { detail: vId }));
-          setTimeout(broadcastP2PState, 200);
-          setTimeout(broadcastP2PState, 800);
+          broadcastP2PState();
+          setTimeout(broadcastP2PState, 150);
+          setTimeout(broadcastP2PState, 500);
+          setTimeout(broadcastP2PState, 1200);
         }
         break;
       }
@@ -489,6 +516,27 @@
   }
 
   function readTrackMeta() {
+    // 1. Priorité aux métadonnées forcées récentes lors du lancement d'un titre depuis la télécommande
+    if (currentTrackOverride && (Date.now() - currentTrackOverride.timestamp < 10000) && currentTrackOverride.title) {
+      return { title: currentTrackOverride.title, artist: currentTrackOverride.artist || '' };
+    }
+
+    // 2. Attributs synchronisés depuis movie_player.getVideoData() (temps réel natif)
+    const syncTitle = document.documentElement.getAttribute('data-ytm-current-title');
+    const syncArtist = document.documentElement.getAttribute('data-ytm-current-artist');
+    if (syncTitle) {
+      return { title: syncTitle, artist: syncArtist || '' };
+    }
+
+    // 3. MediaSession API native
+    if (navigator.mediaSession?.metadata?.title) {
+      return {
+        title: navigator.mediaSession.metadata.title,
+        artist: navigator.mediaSession.metadata.artist || ''
+      };
+    }
+
+    // 4. ytmusic-player-bar DOM
     const playerBar = document.querySelector('ytmusic-player-bar');
     let title = '', artist = '';
     if (playerBar) {
@@ -691,8 +739,23 @@
   function getTrackInfo() {
     const video = document.querySelector('video');
     const { title, artist } = readTrackMeta();
-    const albumArtImg = document.querySelector('#song-image img') || document.querySelector('.image.ytmusic-player-bar img');
-    const albumArt = albumArtImg ? albumArtImg.src : '';
+
+    let albumArt = '';
+    if (currentTrackOverride && (Date.now() - currentTrackOverride.timestamp < 10000) && currentTrackOverride.thumbnail) {
+      albumArt = currentTrackOverride.thumbnail;
+    }
+    if (!albumArt && navigator.mediaSession?.metadata?.artwork?.length) {
+      const artworks = navigator.mediaSession.metadata.artwork;
+      albumArt = artworks[artworks.length - 1].src;
+    }
+    if (!albumArt) {
+      const albumArtImg = document.querySelector('#song-image img') || document.querySelector('.image.ytmusic-player-bar img');
+      albumArt = albumArtImg ? albumArtImg.src : '';
+    }
+    const currentVideoId = document.documentElement.getAttribute('data-ytm-current-videoid');
+    if (!albumArt && currentVideoId) {
+      albumArt = `https://i.ytimg.com/vi/${currentVideoId}/mqdefault.jpg`;
+    }
 
     const duration = video ? video.duration || 0 : 0;
     const currentTime = video ? video.currentTime || 0 : 0;
