@@ -132,13 +132,13 @@
         if (fullList.length > 0) {
           let cacheTag = document.getElementById('ytm-queue-cache-data');
           if (!cacheTag) {
-            cacheTag = document.createElement('script');
+            cacheTag = document.createElement('textarea');
             cacheTag.id = 'ytm-queue-cache-data';
-            cacheTag.type = 'application/json';
             cacheTag.style.display = 'none';
+            cacheTag.setAttribute('aria-hidden', 'true');
             (document.head || document.documentElement).appendChild(cacheTag);
           }
-          cacheTag.textContent = JSON.stringify(fullList);
+          cacheTag.value = JSON.stringify(fullList);
         }
       }
     } catch (e) {}
@@ -304,22 +304,25 @@
     // 4. Mettre à jour immédiatement le cache JSON local de la queue
     try {
       let cacheTag = document.getElementById('ytm-queue-cache-data');
-      if (cacheTag && cacheTag.textContent) {
-        const list = JSON.parse(cacheTag.textContent);
-        if (Array.isArray(list)) {
-          let curIdx = list.findIndex(it => it.isCurrent);
-          const insertIdx = (curIdx !== -1) ? curIdx + 1 : list.length;
-          list.splice(insertIdx, 0, {
-            index: insertIdx,
-            title: title,
-            artist: artist,
-            duration: duration,
-            thumbnail: thumbnail,
-            videoId: videoId,
-            isCurrent: false
-          });
-          list.forEach((item, idx) => { item.index = idx; });
-          cacheTag.textContent = JSON.stringify(list);
+      if (cacheTag) {
+        const raw = cacheTag.value || cacheTag.textContent;
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list)) {
+            let curIdx = list.findIndex(it => it.isCurrent);
+            const insertIdx = (curIdx !== -1) ? curIdx + 1 : list.length;
+            list.splice(insertIdx, 0, {
+              index: insertIdx,
+              title: title,
+              artist: artist,
+              duration: duration,
+              thumbnail: thumbnail,
+              videoId: videoId,
+              isCurrent: false
+            });
+            list.forEach((item, idx) => { item.index = idx; });
+            cacheTag.value = JSON.stringify(list);
+          }
         }
       }
     } catch (cErr) {}

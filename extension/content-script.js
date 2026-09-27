@@ -527,28 +527,31 @@
   function readUpcomingQueue() {
     // 1. Priorité au cache global complet fourni par queue-bridge.js
     const cacheEl = document.getElementById('ytm-queue-cache-data');
-    if (cacheEl && cacheEl.textContent) {
-      try {
-        const cachedList = JSON.parse(cacheEl.textContent);
-        if (Array.isArray(cachedList) && cachedList.length > 0) {
-          const domItems = Array.from(document.querySelectorAll('ytmusic-player-queue-item'));
-          let selectedIdx = domItems.findIndex(el => el.hasAttribute('selected') || el.classList.contains('selected') || el.getAttribute('play-button-state') === 'playing');
+    if (cacheEl) {
+      const rawText = cacheEl.value || cacheEl.textContent;
+      if (rawText) {
+        try {
+          const cachedList = JSON.parse(rawText);
+          if (Array.isArray(cachedList) && cachedList.length > 0) {
+            const domItems = Array.from(document.querySelectorAll('ytmusic-player-queue-item'));
+            let selectedIdx = domItems.findIndex(el => el.hasAttribute('selected') || el.classList.contains('selected') || el.getAttribute('play-button-state') === 'playing');
 
-          if (selectedIdx === -1) {
-            const currentTitle = readTrackMeta().title;
-            if (currentTitle) {
-              selectedIdx = cachedList.findIndex(item => item.title && item.title.toLowerCase() === currentTitle.toLowerCase());
+            if (selectedIdx === -1) {
+              const currentTitle = readTrackMeta().title;
+              if (currentTitle) {
+                selectedIdx = cachedList.findIndex(item => item.title && item.title.toLowerCase() === currentTitle.toLowerCase());
+              }
             }
-          }
 
-          if (selectedIdx !== -1) {
-            cachedList.forEach((it, idx) => {
-              it.isCurrent = (idx === selectedIdx);
-            });
+            if (selectedIdx !== -1) {
+              cachedList.forEach((it, idx) => {
+                it.isCurrent = (idx === selectedIdx);
+              });
+            }
+            return cachedList;
           }
-          return cachedList;
-        }
-      } catch (e) {}
+        } catch (e) {}
+      }
     }
 
     // 2. Fallback lecture du DOM
@@ -1626,6 +1629,14 @@
     const key = `${trackInfo.title} - ${trackInfo.artist}`;
     if (key === lastNotifiedKey) {
       pendingKey = '';
+      return;
+    }
+
+    if (queuedNextTracks.length > 0 && lastNotifiedKey) {
+      const nextId = queuedNextTracks.shift();
+      lastNotifiedKey = '';
+      pendingKey = '';
+      callPlayerAction('play-track', nextId);
       return;
     }
 
