@@ -274,14 +274,6 @@
       letter-spacing: 0.5px;
       color: var(--text-dim);
     }
-    .lyrics-badge {
-      font-size: 10.5px;
-      font-weight: 700;
-      padding: 2px 7px;
-      border-radius: 8px;
-      background: rgba(255, 0, 85, 0.2);
-      color: var(--accent);
-    }
     .btn-fullscreen-lyrics {
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid rgba(255, 255, 255, 0.12);
@@ -316,30 +308,70 @@
     .lyrics-list {
       display: flex;
       flex-direction: column;
-      gap: 12px;
-      padding: 10px 0;
+      gap: 14px;
+      padding: 12px 0;
     }
     .lyric-line {
-      font-size: 16px;
+      font-size: 17.5px;
       font-weight: 700;
-      color: rgba(255, 255, 255, 0.38);
-      line-height: 1.4;
+      line-height: 1.45;
       padding: 6px 10px;
-      border-radius: 8px;
+      border-radius: 10px;
       cursor: pointer;
-      transition: color 0.25s ease, transform 0.25s ease, background 0.25s ease, font-size 0.25s ease;
+      opacity: 0.32;
+      filter: blur(0.2px);
+      transform-origin: left center;
+      transition: opacity 0.35s ease, filter 0.35s ease, transform 0.35s cubic-bezier(0.2, 0, 0.2, 1), background 0.25s ease;
     }
     .lyric-line:active {
       background: rgba(255, 255, 255, 0.06);
     }
     .lyric-line.active {
-      color: #ffffff;
-      font-size: 18.5px;
+      opacity: 1;
+      filter: none;
+      font-size: 20px;
       font-weight: 800;
-      text-shadow: 0 0 16px rgba(255, 255, 255, 0.5);
-      background: rgba(255, 255, 255, 0.05);
-      transform: scale(1.02);
-      transform-origin: left center;
+      transform: scale(1.03);
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .lyric-line.past-line {
+      opacity: 0.55;
+      filter: none;
+    }
+    .lyric-line.past-line .lyric-word {
+      color: rgba(255, 255, 255, 0.72);
+      -webkit-text-fill-color: rgba(255, 255, 255, 0.72);
+    }
+
+    /* Animation mot par mot au fur et à mesure de la prononciation (Style BetterLyrics / Apple Music) */
+    .lyric-word {
+      display: inline-block;
+      white-space: pre;
+      color: rgba(255, 255, 255, 0.3);
+      -webkit-text-fill-color: rgba(255, 255, 255, 0.3);
+      transform-origin: center bottom;
+      transition: color 0.12s ease, transform 0.18s cubic-bezier(0.2, 0, 0.2, 1), filter 0.18s ease;
+    }
+    .lyric-word.future {
+      color: rgba(255, 255, 255, 0.3);
+      -webkit-text-fill-color: rgba(255, 255, 255, 0.3);
+      transform: none;
+      filter: none;
+    }
+    .lyric-word.singing {
+      background: linear-gradient(90deg, #ffffff var(--prog, 0%), rgba(255, 255, 255, 0.3) var(--prog, 0%));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      transform: scale(1.08) translateY(-1px);
+      filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.8)) drop-shadow(0 0 24px rgba(255, 255, 255, 0.35));
+    }
+    .lyric-word.past {
+      background: none;
+      -webkit-background-clip: initial;
+      color: #ffffff;
+      -webkit-text-fill-color: #ffffff;
+      transform: none;
+      filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.3));
     }
     /* Mode Plein Écran pour les paroles */
     .lyrics-section.is-fullscreen {
@@ -600,7 +632,6 @@
       <div class="lyrics-header">
         <div class="lyrics-title-group">
           <span class="lyrics-title-text">PAROLES</span>
-          <span class="lyrics-badge" id="lyrics-badge">Synchro</span>
         </div>
         <button class="btn-fullscreen-lyrics" id="btn-lyrics-fullscreen" title="Plein écran">
           <svg id="fullscreen-icon" viewBox="0 0 24 24" width="18" height="18">
@@ -680,7 +711,6 @@
       repeatIcon: document.getElementById('repeat-icon'),
       lyricsBtn: document.getElementById('lyrics-btn'),
       lyricsBox: document.getElementById('lyrics-box'),
-      lyricsBadge: document.getElementById('lyrics-badge'),
       lyricsScroll: document.getElementById('lyrics-scroll'),
       lyricsStatus: document.getElementById('lyrics-status'),
       lyricsList: document.getElementById('lyrics-list'),
@@ -937,26 +967,21 @@
 
         if (data && data.syncedLyrics) {
           lyricsLines = parseLrc(data.syncedLyrics);
-          el.lyricsBadge.textContent = 'Synchro';
-          el.lyricsBadge.style.display = 'inline-block';
         } else if (data && data.plainLyrics) {
           lyricsLines = data.plainLyrics.split('\n').map((line, idx) => ({ time: -1, text: line.trim() }));
-          el.lyricsBadge.textContent = 'Texte';
-          el.lyricsBadge.style.display = 'inline-block';
         }
 
         if (lyricsLines.length === 0) {
           el.lyricsStatus.textContent = 'Aucune parole trouvée pour ce morceau.';
           el.lyricsStatus.hidden = false;
-          el.lyricsBadge.style.display = 'none';
         } else {
           el.lyricsStatus.hidden = true;
+          prepareLyricsWords();
           renderLyrics();
         }
       } catch (err) {
         el.lyricsStatus.textContent = 'Impossible de charger les paroles.';
         el.lyricsStatus.hidden = false;
-        el.lyricsBadge.style.display = 'none';
       }
     }
 
@@ -986,13 +1011,66 @@
       return out;
     }
 
+    // Calcul précis des durées mot par mot pour l'animation BetterLyrics
+    function prepareLyricsWords() {
+      for (let i = 0; i < lyricsLines.length; i++) {
+        const item = lyricsLines[i];
+        if (item.time < 0) {
+          item.words = [{ text: item.text || '♪', start: -1, end: -1 }];
+          continue;
+        }
+
+        let nextTime = (i + 1 < lyricsLines.length && lyricsLines[i + 1].time > item.time)
+          ? lyricsLines[i + 1].time
+          : item.time + 3.8;
+
+        const rawDur = nextTime - item.time;
+        const wordsRaw = (item.text || '♪').trim().split(/\s+/).filter(Boolean);
+        const wordsList = wordsRaw.length ? wordsRaw : ['♪'];
+
+        let effectiveDur = rawDur <= 5.5
+          ? Math.max(0.8, rawDur - 0.12)
+          : Math.min(rawDur - 0.4, Math.max(1.8, wordsList.length * 0.45));
+
+        const weights = wordsList.map(w => Math.max(1, w.replace(/[^\p{L}\p{N}]/gu, '').length));
+        const totalWeight = weights.reduce((acc, w) => acc + w, 0) || 1;
+
+        let curWordStart = item.time;
+        item.words = wordsList.map((word, wIdx) => {
+          const wDur = (weights[wIdx] / totalWeight) * effectiveDur;
+          const wStart = curWordStart;
+          const wEnd = curWordStart + wDur;
+          curWordStart = wEnd;
+          return { text: word, start: wStart, end: wEnd };
+        });
+        item.endTime = item.time + effectiveDur;
+      }
+    }
+
     function renderLyrics() {
       el.lyricsList.innerHTML = '';
+      currentActiveLyricIndex = -1;
+
       lyricsLines.forEach((item, idx) => {
         const div = document.createElement('div');
         div.className = 'lyric-line';
-        div.textContent = item.text || '♪';
         div.dataset.idx = idx;
+
+        if (Array.isArray(item.words) && item.words.length > 0) {
+          item.words.forEach((wObj, wIdx) => {
+            const span = document.createElement('span');
+            span.className = 'lyric-word future';
+            span.dataset.wordIdx = wIdx;
+            span.textContent = wObj.text;
+            div.appendChild(span);
+            if (wIdx < item.words.length - 1) {
+              div.appendChild(document.createTextNode(' '));
+            }
+          });
+        } else {
+          div.textContent = item.text || '♪';
+        }
+
         if (item.time >= 0) {
           div.addEventListener('click', () => {
             vibrate();
@@ -1009,6 +1087,8 @@
 
     function updateActiveLyric(currentTime) {
       if (!lyricsLines.length || !lyricsOpen) return;
+
+      // 1. Détection de la ligne active
       let activeIdx = -1;
       for (let i = 0; i < lyricsLines.length; i++) {
         if (lyricsLines[i].time >= 0 && lyricsLines[i].time <= currentTime + 0.15) {
@@ -1017,12 +1097,27 @@
           break;
         }
       }
+
+      const all = el.lyricsList.children;
+
+      // 2. Gestion du défilement lors du changement de ligne
       if (activeIdx !== currentActiveLyricIndex) {
         currentActiveLyricIndex = activeIdx;
-        const all = el.lyricsList.children;
         for (let i = 0; i < all.length; i++) {
-          all[i].classList.toggle('active', i === activeIdx);
+          const isAct = (i === activeIdx);
+          const isPast = (activeIdx >= 0 && i < activeIdx);
+          all[i].classList.toggle('active', isAct);
+          all[i].classList.toggle('past-line', isPast);
+
+          if (!isAct) {
+            const spans = all[i].querySelectorAll('.lyric-word');
+            for (const sp of spans) {
+              sp.className = isPast ? 'lyric-word past' : 'lyric-word future';
+              sp.style.removeProperty('--prog');
+            }
+          }
         }
+
         if (activeIdx >= 0 && all[activeIdx]) {
           const activeEl = all[activeIdx];
           const scrollContainer = el.lyricsScroll;
@@ -1034,17 +1129,49 @@
           }
         }
       }
+
+      // 3. Animation mot par mot au fur et à mesure de la prononciation (Style BetterLyrics)
+      if (activeIdx >= 0 && all[activeIdx] && lyricsLines[activeIdx] && lyricsLines[activeIdx].words) {
+        const lineItem = lyricsLines[activeIdx];
+        const lineEl = all[activeIdx];
+        const spans = lineEl.querySelectorAll('.lyric-word');
+
+        for (let wIdx = 0; wIdx < lineItem.words.length; wIdx++) {
+          const wObj = lineItem.words[wIdx];
+          const span = spans[wIdx];
+          if (!span) continue;
+
+          if (currentTime >= wObj.end) {
+            if (!span.classList.contains('past') || span.classList.contains('singing')) {
+              span.className = 'lyric-word past';
+              span.style.removeProperty('--prog');
+            }
+          } else if (currentTime < wObj.start) {
+            if (!span.classList.contains('future')) {
+              span.className = 'lyric-word future';
+              span.style.removeProperty('--prog');
+            }
+          } else {
+            span.className = 'lyric-word singing';
+            const wordDur = Math.max(0.05, wObj.end - wObj.start);
+            const p = Math.max(0, Math.min(1, (currentTime - wObj.start) / wordDur));
+            span.style.setProperty('--prog', (p * 100).toFixed(1) + '%');
+          }
+        }
+      }
     }
 
-    // Horloge locale d'interpolation fluide (100ms) pour les paroles
-    setInterval(() => {
-      if (isTrackPlaying && !isUserSeeking) {
+    // Animation 60fps ultra-fluide pour le karaoké mot par mot
+    function lyricsAnimLoop() {
+      if (isTrackPlaying && !isUserSeeking && lyricsOpen) {
         const now = Date.now();
         const delta = (now - lastStateTime) / 1000;
         const current = estimatedCurrentTime + delta;
         updateActiveLyric(current);
       }
-    }, 100);
+      requestAnimationFrame(lyricsAnimLoop);
+    }
+    requestAnimationFrame(lyricsAnimLoop);
 
     el.seek.addEventListener('input', () => { isUserSeeking = true; });
     el.seek.addEventListener('change', () => {
