@@ -320,6 +320,20 @@
         }
         break;
       }
+      case 'play-track': {
+        const vId = typeof value === 'string' ? value : value?.videoId;
+        if (vId) {
+          window.dispatchEvent(new CustomEvent('ytm-play-track', { detail: vId }));
+        }
+        break;
+      }
+      case 'queue-track': {
+        const vId = typeof value === 'string' ? value : value?.videoId;
+        if (vId) {
+          window.dispatchEvent(new CustomEvent('ytm-queue-track', { detail: value }));
+        }
+        break;
+      }
     }
   }
 
@@ -1661,7 +1675,44 @@
         });
 
         conn.on('data', (payload) => {
-          if (payload && payload.action) {
+          if (!payload) return;
+
+          if (payload.action === 'search') {
+            const query = (payload.query || payload.value || '').trim();
+            const reqId = payload.requestId || Math.random().toString(36).substring(2);
+            if (!query) {
+              try {
+                conn.send({ type: 'search-results', requestId: reqId, query: '', results: [] });
+              } catch (e) {}
+              return;
+            }
+
+            const onResults = (ev) => {
+              if (ev.detail && ev.detail.requestId === reqId) {
+                window.removeEventListener('ytm-remote-search-response', onResults);
+                try {
+                  conn.send({
+                    type: 'search-results',
+                    requestId: reqId,
+                    query: ev.detail.query,
+                    results: ev.detail.results || []
+                  });
+                } catch (e) {}
+              }
+            };
+
+            window.addEventListener('ytm-remote-search-response', onResults);
+            window.dispatchEvent(new CustomEvent('ytm-remote-search-request', {
+              detail: { query, requestId: reqId }
+            }));
+
+            setTimeout(() => {
+              window.removeEventListener('ytm-remote-search-response', onResults);
+            }, 6000);
+            return;
+          }
+
+          if (payload.action) {
             callPlayerAction(payload.action, payload.value);
             setTimeout(broadcastP2PState, 60);
           }
