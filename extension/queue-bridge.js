@@ -3,6 +3,11 @@
 (function () {
   'use strict';
 
+  try {
+    const oldTag = document.getElementById('ytm-queue-cache-data');
+    if (oldTag) oldTag.remove();
+  } catch (e) {}
+
   function cleanUrl(url) {
     if (!url) return '';
     if (url.startsWith('//')) return 'https:' + url;
@@ -130,15 +135,9 @@
         });
 
         if (fullList.length > 0) {
-          let cacheTag = document.getElementById('ytm-queue-cache-data');
-          if (!cacheTag) {
-            cacheTag = document.createElement('textarea');
-            cacheTag.id = 'ytm-queue-cache-data';
-            cacheTag.style.display = 'none';
-            cacheTag.setAttribute('aria-hidden', 'true');
-            (document.head || document.documentElement).appendChild(cacheTag);
-          }
-          cacheTag.value = JSON.stringify(fullList);
+          window.dispatchEvent(new CustomEvent('ytm-queue-synced-data', {
+            detail: fullList
+          }));
         }
       }
     } catch (e) {}
@@ -157,11 +156,20 @@
     if (!videoId) return;
 
     try {
+      // 1. movie_player (API HTML5 standard YouTube Music)
+      const mp = document.getElementById('movie_player');
+      if (mp && typeof mp.loadVideoById === 'function') {
+        mp.loadVideoById(videoId);
+        setTimeout(runSync, 400);
+        return;
+      }
+
+      // 2. Fallbacks internes Polymer / app
       const app = document.querySelector('ytmusic-app');
       const playerApi = document.querySelector('ytmusic-player-page')?.playerApi_ || app?.playerUiState_?.player;
       if (playerApi && typeof playerApi.loadVideoById === 'function') {
         playerApi.loadVideoById(videoId);
-        setTimeout(runSync, 500);
+        setTimeout(runSync, 400);
         return;
       }
       if (app && typeof app.navigate_ === 'function') {
@@ -180,55 +188,7 @@
     const videoId = trackData.videoId;
     if (!videoId) return;
 
-    const title = trackData.title || 'Titre';
-    const artist = trackData.artist || 'Artiste';
-    const duration = trackData.duration || '';
-    const thumbnail = trackData.thumbnail || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
-
-    // 1. Récupérer le vrai playlistPanelVideoRenderer via /music/get_queue
-    let serverRenderer = null;
-    try {
-      const res = await fetch('https://music.youtube.com/youtubei/v1/music/get_queue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          context: {
-            client: {
-              clientName: 'WEB_REMIX',
-              clientVersion: '1.20240101.01.00',
-              hl: navigator.language || 'fr',
-              gl: 'FR'
-            }
-          },
-          videoIds: [videoId]
-        })
-      });
-      if (res.ok) {
-        const qData = await res.json();
-        serverRenderer = qData.queueDatas?.[0]?.content?.playlistPanelVideoRenderer;
-      }
-    } catch (netErr) {}
-
-    const renderer = serverRenderer || {
-      videoId: videoId,
-      title: { runs: [{ text: title }] },
-      shortBylineText: { runs: [{ text: artist }] },
-      longBylineText: { runs: [{ text: artist }] },
-      lengthText: { runs: [{ text: duration }] },
-      thumbnail: {
-        thumbnails: [
-          { url: thumbnail, width: 120, height: 120 }
-        ]
-      },
-      navigationEndpoint: {
-        watchEndpoint: {
-          videoId: videoId
-        }
-      },
-      selected: false
-    };
-
-    // 2. Déclencher les actions natives YouTube Music (queueAddEndpoint)
+    // Déclencher les actions natives YouTube Music (queueAddEndpoint)
     const nativeEndpoint = {
       queueAddEndpoint: {
         queueTarget: {
@@ -270,74 +230,16 @@
       } catch (e) {}
     }
 
-    // 3. Insérer dans le modèle Polymer de file d'attente juste APRÈS le morceau en cours
-    const queueEl = document.querySelector('ytmusic-player-queue');
-    if (queueEl) {
-      const qData = queueEl.data || queueEl.queueData || queueEl.__data?.data || queueEl.__data?.queueData;
-      if (qData) {
-        if (!Array.isArray(qData.items)) qData.items = [];
-        let curIdx = qData.items.findIndex(it => {
-          const r = it?.playlistPanelVideoRenderer || it;
-          return r?.selected;
-        });
-        const insertIdx = (curIdx !== -1) ? curIdx + 1 : qData.items.length;
-        qData.items.splice(insertIdx, 0, { playlistPanelVideoRenderer: renderer });
-
-        if (typeof queueEl.notifySplices === 'function') {
-          try {
-            queueEl.notifySplices('data.items', [{
-              index: insertIdx,
-              removed: [],
-              addedCount: 1,
-              object: qData.items,
-              type: 'splice'
-            }]);
-          } catch (err) {}
-        }
-      }
-
-      if (Array.isArray(queueEl.items)) {
-        queueEl.items.push({ playlistPanelVideoRenderer: renderer });
-      }
-    }
-
-    // 4. Mettre à jour immédiatement le cache JSON local de la queue
+    // Essayer de résoudre le command handler sur ytmusic-app si exposé
     try {
-      let cacheTag = document.getElementById('ytm-queue-cache-data');
-      if (cacheTag) {
-        const raw = cacheTag.value || cacheTag.textContent;
-        if (raw) {
-          const list = JSON.parse(raw);
-          if (Array.isArray(list)) {
-            let curIdx = list.findIndex(it => it.isCurrent);
-            const insertIdx = (curIdx !== -1) ? curIdx + 1 : list.length;
-            list.splice(insertIdx, 0, {
-              index: insertIdx,
-              title: title,
-              artist: artist,
-              duration: duration,
-              thumbnail: thumbnail,
-              videoId: videoId,
-              isCurrent: false
-            });
-            list.forEach((item, idx) => { item.index = idx; });
-            cacheTag.value = JSON.stringify(list);
-          }
-        }
+      const app = document.querySelector('ytmusic-app');
+      if (app && typeof app.resolveServiceEndpoint_ === 'function') {
+        app.resolveServiceEndpoint_(nativeEndpoint);
       }
-    } catch (cErr) {}
-
-    // 5. Informer le lecteur sous-jacent
-    try {
-      const playerApi = document.querySelector('ytmusic-player-page')?.playerApi_ || document.querySelector('ytmusic-app')?.playerUiState_?.player;
-      if (playerApi && typeof playerApi.cueVideoById === 'function') {
-        playerApi.cueVideoById(videoId);
-      }
-    } catch (pErr) {}
+    } catch (e) {}
 
     runSync();
-    setTimeout(runSync, 300);
-    setTimeout(runSync, 1000);
+    setTimeout(runSync, 400);
   });
 
   // Écouteur pour sauter directement à un index de file d'attente

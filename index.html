@@ -1165,9 +1165,11 @@
             btnQueue.title = 'Ajouter à la file d\'attente';
           }, 2000);
 
-          // Ajout immédiat dans l'affichage local de la queue
-          currentQueue.push({
-            index: currentQueue.length,
+          // Ajout immédiat dans l'affichage local de la queue juste après le titre en cours
+          let curIdx = currentQueue.findIndex(it => it.isCurrent);
+          const insertIdx = (curIdx !== -1) ? curIdx + 1 : currentQueue.length;
+          currentQueue.splice(insertIdx, 0, {
+            index: insertIdx,
             title: item.title,
             artist: item.artist,
             duration: item.duration,
@@ -1175,6 +1177,7 @@
             videoId: item.videoId,
             isCurrent: false
           });
+          currentQueue.forEach((it, i) => { it.index = i; });
           renderQueue(currentQueue);
         });
 

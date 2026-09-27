@@ -215,6 +215,13 @@
     }
   }
 
+  let latestSyncedQueue = [];
+  window.addEventListener('ytm-queue-synced-data', (e) => {
+    if (Array.isArray(e.detail) && e.detail.length > 0) {
+      latestSyncedQueue = e.detail;
+    }
+  });
+
   const queuedNextTracks = [];
 
   // Pont page pour playerApi si accessible
@@ -236,8 +243,9 @@
         break;
       case 'next':
         if (queuedNextTracks.length > 0) {
-          const nextId = queuedNextTracks.shift();
-          window.dispatchEvent(new CustomEvent('ytm-play-track', { detail: nextId }));
+          const nextItem = queuedNextTracks.shift();
+          const nextId = nextItem.videoId || nextItem;
+          callPlayerAction('play-track', nextId);
           setTimeout(broadcastP2PState, 200);
           break;
         }
@@ -311,6 +319,13 @@
         }
         break;
       case 'play-queue-index': {
+        const fullQueue = readUpcomingQueue();
+        const targetItem = fullQueue && fullQueue[value];
+        if (targetItem && targetItem.videoId) {
+          // Si on a un videoId directement disponible, on lance immédiatement la vidéo
+          callPlayerAction('play-track', targetItem.videoId);
+          break;
+        }
         try {
           window.dispatchEvent(new CustomEvent('ytm-play-index', { detail: value }));
         } catch (e) {}
@@ -331,7 +346,6 @@
       case 'play-track': {
         const vId = typeof value === 'string' ? value : value?.videoId;
         if (vId) {
-          queuedNextTracks.length = 0;
           window.dispatchEvent(new CustomEvent('ytm-play-track', { detail: vId }));
           setTimeout(broadcastP2PState, 200);
           setTimeout(broadcastP2PState, 800);
@@ -341,7 +355,14 @@
       case 'queue-track': {
         const vId = typeof value === 'string' ? value : value?.videoId;
         if (vId) {
-          queuedNextTracks.push(vId);
+          const item = typeof value === 'object' ? value : { videoId: vId };
+          queuedNextTracks.push({
+            videoId: vId,
+            title: item.title || 'Titre',
+            artist: item.artist || '',
+            duration: item.duration || '',
+            thumbnail: item.thumbnail || `https://i.ytimg.com/vi/${vId}/mqdefault.jpg`
+          });
           window.dispatchEvent(new CustomEvent('ytm-queue-track', { detail: value }));
           setTimeout(broadcastP2PState, 150);
           setTimeout(broadcastP2PState, 500);
@@ -524,34 +545,54 @@
     return '';
   }
 
-  function readUpcomingQueue() {
-    // 1. Priorité au cache global complet fourni par queue-bridge.js
-    const cacheEl = document.getElementById('ytm-queue-cache-data');
-    if (cacheEl) {
-      const rawText = cacheEl.value || cacheEl.textContent;
-      if (rawText) {
-        try {
-          const cachedList = JSON.parse(rawText);
-          if (Array.isArray(cachedList) && cachedList.length > 0) {
-            const domItems = Array.from(document.querySelectorAll('ytmusic-player-queue-item'));
-            let selectedIdx = domItems.findIndex(el => el.hasAttribute('selected') || el.classList.contains('selected') || el.getAttribute('play-button-state') === 'playing');
-
-            if (selectedIdx === -1) {
-              const currentTitle = readTrackMeta().title;
-              if (currentTitle) {
-                selectedIdx = cachedList.findIndex(item => item.title && item.title.toLowerCase() === currentTitle.toLowerCase());
-              }
-            }
-
-            if (selectedIdx !== -1) {
-              cachedList.forEach((it, idx) => {
-                it.isCurrent = (idx === selectedIdx);
-              });
-            }
-            return cachedList;
-          }
-        } catch (e) {}
+  function mergeQueuedIntoList(baseList) {
+    if (!Array.isArray(baseList) || baseList.length === 0) {
+      if (queuedNextTracks.length > 0) {
+        return queuedNextTracks.map((it, idx) => ({ ...it, index: idx, isCurrent: false }));
       }
+      return [];
+    }
+    if (queuedNextTracks.length === 0) return baseList;
+
+    let curIdx = baseList.findIndex(it => it.isCurrent);
+    const insertIdx = (curIdx !== -1) ? curIdx + 1 : baseList.length;
+
+    const result = baseList.map(it => ({ ...it }));
+    const itemsToInsert = queuedNextTracks.map(it => ({
+      videoId: it.videoId,
+      title: it.title || 'Titre',
+      artist: it.artist || '',
+      duration: it.duration || '',
+      thumbnail: it.thumbnail || `https://i.ytimg.com/vi/${it.videoId}/mqdefault.jpg`,
+      isCurrent: false,
+      isQueuedNext: true
+    }));
+
+    result.splice(insertIdx, 0, ...itemsToInsert);
+    result.forEach((item, idx) => { item.index = idx; });
+    return result;
+  }
+
+  function readUpcomingQueue() {
+    // 1. Priorité aux données synchronisées en mémoire depuis queue-bridge.js
+    if (Array.isArray(latestSyncedQueue) && latestSyncedQueue.length > 0) {
+      const listCopy = latestSyncedQueue.map(item => ({ ...item }));
+      const domItems = Array.from(document.querySelectorAll('ytmusic-player-queue-item'));
+      let selectedIdx = domItems.findIndex(el => el.hasAttribute('selected') || el.classList.contains('selected') || el.getAttribute('play-button-state') === 'playing');
+
+      if (selectedIdx === -1) {
+        const currentTitle = readTrackMeta().title;
+        if (currentTitle) {
+          selectedIdx = listCopy.findIndex(item => item.title && item.title.toLowerCase() === currentTitle.toLowerCase());
+        }
+      }
+
+      if (selectedIdx !== -1) {
+        listCopy.forEach((it, idx) => {
+          it.isCurrent = (idx === selectedIdx);
+        });
+      }
+      return mergeQueuedIntoList(listCopy);
     }
 
     // 2. Fallback lecture du DOM
@@ -582,7 +623,7 @@
           });
         }
       });
-      return list;
+      return mergeQueuedIntoList(list);
     }
 
     const playlistItems = Array.from(document.querySelectorAll('ytmusic-responsive-list-item-renderer'));
@@ -610,10 +651,10 @@
           });
         }
       });
-      return list;
+      return mergeQueuedIntoList(list);
     }
 
-    return [];
+    return mergeQueuedIntoList([]);
   }
 
   function getTrackInfo() {
@@ -1632,8 +1673,9 @@
       return;
     }
 
-    if (queuedNextTracks.length > 0 && lastNotifiedKey) {
-      const nextId = queuedNextTracks.shift();
+    if (queuedNextTracks.length > 0) {
+      const nextItem = queuedNextTracks.shift();
+      const nextId = nextItem.videoId || nextItem;
       lastNotifiedKey = '';
       pendingKey = '';
       callPlayerAction('play-track', nextId);
@@ -1902,10 +1944,15 @@
       video.addEventListener(evt, () => setTimeout(broadcastP2PState, 50));
     });
 
+    let hasTriggeredAutoNext = false;
+
     video.addEventListener('ended', () => {
-      if (queuedNextTracks.length > 0) {
-        const nextId = queuedNextTracks.shift();
+      if (!hasTriggeredAutoNext && queuedNextTracks.length > 0) {
+        hasTriggeredAutoNext = true;
+        const nextItem = queuedNextTracks.shift();
+        const nextId = nextItem.videoId || nextItem;
         callPlayerAction('play-track', nextId);
+        setTimeout(() => { hasTriggeredAutoNext = false; }, 2500);
       }
       setTimeout(broadcastP2PState, 200);
     });
@@ -1915,6 +1962,17 @@
       if (now - lastBroadcastTime > 800) {
         lastBroadcastTime = now;
         broadcastP2PState();
+      }
+
+      // Transition automatique quand le morceau en cours touche à sa fin (< 0.6s)
+      if (video.duration && video.duration > 3 && video.currentTime >= video.duration - 0.6) {
+        if (!hasTriggeredAutoNext && queuedNextTracks.length > 0) {
+          hasTriggeredAutoNext = true;
+          const nextItem = queuedNextTracks.shift();
+          const nextId = nextItem.videoId || nextItem;
+          callPlayerAction('play-track', nextId);
+          setTimeout(() => { hasTriggeredAutoNext = false; }, 2500);
+        }
       }
     });
   }
