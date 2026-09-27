@@ -1637,6 +1637,123 @@
   setInterval(checkForNewTrack, 800);
 
   // ==========================================
+  // Recherche Native YouTube Music
+  // ==========================================
+  async function searchYouTubeMusic(query) {
+    try {
+      const postData = {
+        context: {
+          client: {
+            clientName: 'WEB_REMIX',
+            clientVersion: '1.20240101.01.00',
+            hl: navigator.language || 'fr',
+            gl: 'FR'
+          }
+        },
+        query: query
+      };
+
+      const res = await fetch('https://music.youtube.com/youtubei/v1/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(postData)
+      });
+
+      if (!res.ok) {
+        console.warn('[YTM Search] HTTP error:', res.status);
+        return [];
+      }
+
+      const data = await res.json();
+
+      function findRenderers(node) {
+        if (!node || typeof node !== 'object') return [];
+        let list = [];
+        if (node.musicResponsiveListItemRenderer) {
+          list.push(node.musicResponsiveListItemRenderer);
+        }
+        for (const k of Object.keys(node)) {
+          list = list.concat(findRenderers(node[k]));
+        }
+        return list;
+      }
+
+      function parseItem(r) {
+        try {
+          let videoId = r.playlistItemData?.videoId ||
+                        r.overlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.watchEndpoint?.videoId ||
+                        r.navigationEndpoint?.watchEndpoint?.videoId || '';
+
+          if (!videoId) {
+            const s = JSON.stringify(r);
+            const m = s.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
+            if (m) videoId = m[1];
+          }
+
+          if (!videoId) return null;
+
+          let title = '';
+          const flexCols = r.flexColumns || [];
+          if (flexCols.length > 0) {
+            const runs = flexCols[0]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs || [];
+            title = runs.map(x => x.text || '').join('');
+          }
+
+          let artist = '';
+          let duration = '';
+          if (flexCols.length > 1) {
+            const runs = flexCols[1]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs || [];
+            const texts = runs.map(x => (x.text || '').trim()).filter(x => x && x !== '•' && x !== '·');
+            for (const t of texts) {
+              if (/^\d+:\d+$/.test(t)) {
+                duration = t;
+              } else if (t.toLowerCase() !== 'titre' && t.toLowerCase() !== 'morceau' && t.toLowerCase() !== 'song') {
+                artist = artist ? artist + ', ' + t : t;
+              }
+            }
+          }
+
+          const thumbs = r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails || [];
+          let thumbnail = thumbs.length > 0 ? thumbs[thumbs.length - 1].url : '';
+          if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
+          if (!thumbnail && videoId) thumbnail = `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+
+          if (title && videoId) {
+            return {
+              title,
+              artist: artist || query,
+              duration,
+              videoId,
+              thumbnail
+            };
+          }
+        } catch (e) {}
+        return null;
+      }
+
+      const raw = findRenderers(data);
+      const seen = new Set();
+      const results = [];
+
+      for (const it of raw) {
+        const parsed = parseItem(it);
+        if (parsed && !seen.has(parsed.videoId)) {
+          seen.add(parsed.videoId);
+          results.push(parsed);
+          if (results.length >= 25) break;
+        }
+      }
+
+      return results;
+    } catch (err) {
+      console.warn('[YTM Search] Erreur globale recherche:', err);
+      return [];
+    }
+  }
+
+  // ==========================================
   // 5b. Télécommande Universelle WebRTC P2P (Plug & Play, Zéro Python)
   // ==========================================
   let peerHost = null;
@@ -1674,7 +1791,7 @@
           } catch (e) {}
         });
 
-        conn.on('data', (payload) => {
+        conn.on('data', async (payload) => {
           if (!payload) return;
 
           if (payload.action === 'search') {
@@ -1687,28 +1804,20 @@
               return;
             }
 
-            const onResults = (ev) => {
-              if (ev.detail && ev.detail.requestId === reqId) {
-                window.removeEventListener('ytm-remote-search-response', onResults);
-                try {
-                  conn.send({
-                    type: 'search-results',
-                    requestId: reqId,
-                    query: ev.detail.query,
-                    results: ev.detail.results || []
-                  });
-                } catch (e) {}
-              }
-            };
-
-            window.addEventListener('ytm-remote-search-response', onResults);
-            window.dispatchEvent(new CustomEvent('ytm-remote-search-request', {
-              detail: { query, requestId: reqId }
-            }));
-
-            setTimeout(() => {
-              window.removeEventListener('ytm-remote-search-response', onResults);
-            }, 6000);
+            try {
+              const results = await searchYouTubeMusic(query);
+              conn.send({
+                type: 'search-results',
+                requestId: reqId,
+                query: query,
+                results: results
+              });
+            } catch (err) {
+              console.warn('[YTM Remote] Search failed:', err);
+              try {
+                conn.send({ type: 'search-results', requestId: reqId, query: query, results: [] });
+              } catch (e) {}
+            }
             return;
           }
 
