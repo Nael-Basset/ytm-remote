@@ -1906,7 +1906,18 @@
           }
 
           if (payload.action) {
-            callPlayerAction(payload.action, payload.value);
+            let diagInfo = `Action "${payload.action}"`;
+            try {
+              callPlayerAction(payload.action, payload.value);
+              const vid = document.querySelector('video');
+              const mp = document.getElementById('movie_player');
+              diagInfo += ` reçue et exécutée (video=${!!vid}, paused=${vid ? vid.paused : 'N/A'}, mp=${!!mp})`;
+            } catch (err) {
+              diagInfo += ` -> ERREUR: ${err.message}`;
+            }
+            try {
+              conn.send({ type: 'diag-log', message: diagInfo });
+            } catch (e) {}
             setTimeout(broadcastP2PState, 60);
           }
         });

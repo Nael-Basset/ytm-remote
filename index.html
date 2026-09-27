@@ -876,6 +876,26 @@
         <div style="font-size: 12px; color: var(--text-dim); text-align: center; padding: 12px;">Aucun morceau en attente</div>
       </div>
     </div>
+
+    <!-- Panneau Diagnostic / Logs -->
+    <div class="logs-card" id="logs-card" style="margin-top: 14px; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 10px 12px; font-family: monospace;">
+      <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" id="logs-toggle">
+        <span style="font-size: 11.5px; font-weight: 700; color: var(--text-dim); display: flex; align-items: center; gap: 6px;">
+          📋 DIAGNOSTIC & LOGS
+          <span id="logs-badge" style="font-size: 10px; background: rgba(255,255,255,0.1); padding: 1px 6px; border-radius: 8px;">0</span>
+        </span>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button id="btn-copy-logs" style="background: rgba(255,255,255,0.1); border: none; color: #fff; font-size: 10.5px; padding: 4px 8px; border-radius: 6px; cursor: pointer;">Copier</button>
+          <button id="btn-clear-logs" style="background: rgba(255,255,255,0.1); border: none; color: #fff; font-size: 10.5px; padding: 4px 8px; border-radius: 6px; cursor: pointer;">Effacer</button>
+          <span id="logs-arrow" style="font-size: 10px; color: var(--text-dim); transition: transform 0.2s;">▼</span>
+        </div>
+      </div>
+      <div id="logs-body" style="display: none; margin-top: 10px; max-height: 250px; overflow-y: auto; font-size: 11px; line-height: 1.5; color: #bbb; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+        <div id="logs-list" style="display: flex; flex-direction: column; gap: 4px;">
+          <div style="color: #666;">Initialisation des logs…</div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -948,10 +968,86 @@
     let dataChannel = null;
     const targetRoomId = (location.hash ? location.hash.slice(1) : new URLSearchParams(location.search).get('room') || '').trim();
 
+    // ==========================================
+    // Système de Logs & Diagnostic en temps réel
+    // ==========================================
+    const logsListEl = document.getElementById('logs-list');
+    const logsBadgeEl = document.getElementById('logs-badge');
+    const logsBodyEl = document.getElementById('logs-body');
+    const logsArrowEl = document.getElementById('logs-arrow');
+    const logsToggleEl = document.getElementById('logs-toggle');
+    const btnCopyLogs = document.getElementById('btn-copy-logs');
+    const btnClearLogs = document.getElementById('btn-clear-logs');
+    let logsCount = 0;
+    let isLogsOpen = false;
+    const allLogEntries = [];
+
+    function addLog(tag, msg, color = '#aaa') {
+      const now = new Date();
+      const timeStr = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0');
+      const entryText = `[${timeStr}] [${tag}] ${msg}`;
+      allLogEntries.push(entryText);
+      if (allLogEntries.length > 250) allLogEntries.shift();
+
+      logsCount++;
+      if (logsBadgeEl) logsBadgeEl.textContent = logsCount;
+
+      if (logsListEl) {
+        if (logsCount === 1) logsListEl.innerHTML = '';
+        const row = document.createElement('div');
+        row.style.cssText = `color: ${color}; word-break: break-all; border-bottom: 1px solid rgba(255,255,255,0.03); padding-bottom: 2px;`;
+        row.innerHTML = `<span style="opacity:0.5;">[${timeStr}]</span> <strong style="color:${color};">[${tag}]</strong> ${msg}`;
+        logsListEl.appendChild(row);
+        if (isLogsOpen) {
+          logsBodyEl.scrollTop = logsBodyEl.scrollHeight;
+        }
+      }
+    }
+
+    if (logsToggleEl) {
+      logsToggleEl.addEventListener('click', (e) => {
+        if (e.target.tagName === 'BUTTON') return;
+        isLogsOpen = !isLogsOpen;
+        logsBodyEl.style.display = isLogsOpen ? 'block' : 'none';
+        logsArrowEl.style.transform = isLogsOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+        if (isLogsOpen) logsBodyEl.scrollTop = logsBodyEl.scrollHeight;
+      });
+    }
+
+    if (btnCopyLogs) {
+      btnCopyLogs.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const text = allLogEntries.join('\n');
+        navigator.clipboard.writeText(text).then(() => {
+          const old = btnCopyLogs.textContent;
+          btnCopyLogs.textContent = 'Copié !';
+          setTimeout(() => { btnCopyLogs.textContent = old; }, 1500);
+        }).catch(() => {
+          alert('Impossible de copier automatiquement. Sélectionnez le texte ci-dessous.');
+        });
+      });
+    }
+
+    if (btnClearLogs) {
+      btnClearLogs.addEventListener('click', (e) => {
+        e.stopPropagation();
+        allLogEntries.length = 0;
+        logsCount = 0;
+        if (logsBadgeEl) logsBadgeEl.textContent = '0';
+        if (logsListEl) logsListEl.innerHTML = '<div style="color: #666;">Logs effacés.</div>';
+      });
+    }
+
+    addLog('INIT', 'Démarrage télécommande. Room cible: ' + (targetRoomId || 'AUCUNE (flashez le QR)'), '#fff');
+
     function sendAction(action, value = null) {
       vibrate();
+      const valStr = (value !== null && value !== undefined) ? ' ' + JSON.stringify(value) : '';
       if (dataChannel && dataChannel.open) {
+        addLog('ENVOI', action + valStr, '#00e5ff');
         dataChannel.send({ action, value });
+      } else {
+        addLog('ERR', 'Échec envoi (' + action + '): Canal non ouvert !', '#ff3366');
       }
     }
 
@@ -959,16 +1055,19 @@
       if (!targetRoomId) {
         el.connDot.className = 'status-dot disconnected';
         el.connText.textContent = 'Lien incomplet : flashez le QR Code';
+        addLog('ERR', 'Room ID absent de l\'URL (#ytm-...)', '#ff3366');
         return;
       }
 
       el.connDot.className = 'status-dot';
       el.connText.textContent = 'Connexion à votre PC…';
+      addLog('CONN', 'Initialisation PeerJS client…', '#ffbb00');
 
       try {
-        peer = new Peer({ debug: 0 });
+        peer = new Peer({ debug: 1 });
 
-        peer.on('open', () => {
+        peer.on('open', (id) => {
+          addLog('CONN', 'Peer client prêt (id=' + id + '). Connexion à l\'hôte: ' + targetRoomId, '#00e676');
           connectToPeerHost();
         });
 
@@ -976,27 +1075,44 @@
           console.warn('Peer error:', err);
           el.connDot.className = 'status-dot disconnected';
           el.connText.textContent = 'Erreur réseau : reconnexion…';
+          addLog('ERR', 'Erreur PeerJS: ' + (err?.type || err?.message || err), '#ff3366');
           setTimeout(connectToPeerHost, 3000);
         });
       } catch (e) {
         console.error('PeerJS init failed:', e);
+        addLog('ERR', 'Exception PeerJS: ' + e.message, '#ff3366');
       }
     }
 
     function connectToPeerHost() {
       if (!peer || peer.destroyed) return;
+      addLog('CONN', 'Tentative de connexion à ' + targetRoomId + '…', '#ffbb00');
       dataChannel = peer.connect(targetRoomId, { reliable: true });
 
       dataChannel.on('open', () => {
         el.connDot.className = 'status-dot connected';
         el.connText.textContent = 'Connecté en direct à votre PC';
+        addLog('CONN', 'Canal WebRTC OUVERT ! En attente de l\'état PC…', '#00e676');
       });
+
+      let lastLoggedTrack = '';
+      let lastLoggedPlay = null;
 
       dataChannel.on('data', (payload) => {
         if (!payload) return;
-        if (payload.type === 'state') {
+        if (payload.type === 'diag-log') {
+          addLog('PC', payload.message, '#a8ff00');
+        } else if (payload.type === 'state') {
+          const s = payload.data || {};
+          const trackKey = (s.title || '') + '|' + (s.artist || '');
+          if (trackKey !== lastLoggedTrack || s.isPlaying !== lastLoggedPlay) {
+            lastLoggedTrack = trackKey;
+            lastLoggedPlay = s.isPlaying;
+            addLog('REÇU', `State: [${s.isPlaying ? '▶ EN LECTURE' : '⏸ EN PAUSE'}] "${s.title}" (${s.artist})`, '#b388ff');
+          }
           applyState(payload.data);
         } else if (payload.type === 'search-results') {
+          addLog('REÇU', `Recherche: ${payload.results?.length || 0} résultats pour "${payload.query}"`, '#00e5ff');
           renderSearchResults(payload.results, payload.query);
         }
       });
@@ -1004,6 +1120,7 @@
       dataChannel.on('close', () => {
         el.connDot.className = 'status-dot disconnected';
         el.connText.textContent = 'Déconnecté du PC. Reconnexion…';
+        addLog('CONN', 'Canal fermé. Reconnexion dans 2.5s…', '#ff9100');
         setTimeout(connectToPeerHost, 2500);
       });
     }
