@@ -273,11 +273,32 @@
 
   // Lancer directement un morceau par videoId
   window.addEventListener('ytm-play-track', (e) => {
-    const videoId = typeof e.detail === 'string' ? e.detail : e.detail?.videoId;
+    let videoId = typeof e.detail === 'string' ? e.detail : e.detail?.videoId;
+    if (typeof videoId === 'string' && videoId.startsWith('{')) {
+      try { videoId = JSON.parse(videoId)?.videoId || videoId; } catch (err) {}
+    }
     if (!videoId) return;
 
+    // 1. Priorité ABSOLUE : movie_player.loadVideoById (zéro déchargement de page, garde WebRTC actif)
+    const mp = document.getElementById('movie_player');
+    if (mp && typeof mp.loadVideoById === 'function') {
+      try {
+        mp.loadVideoById(videoId);
+        if (typeof mp.playVideo === 'function') {
+          mp.playVideo();
+          setTimeout(() => { try { mp.playVideo(); } catch (e) {} }, 80);
+          setTimeout(() => { try { mp.playVideo(); } catch (e) {} }, 250);
+        }
+        runSync();
+        setTimeout(runSync, 400);
+        return;
+      } catch (err) {
+        console.warn('[YTM Bridge] loadVideoById error:', err);
+      }
+    }
+
     try {
-      // 1. Navigation SPA native YouTube Music
+      // 2. Navigation SPA native YouTube Music (fallback)
       const app = document.querySelector('ytmusic-app');
       if (app && typeof app.navigate_ === 'function') {
         app.navigate_('/watch?v=' + videoId);
@@ -285,7 +306,7 @@
         return;
       }
 
-      // 2. Clic sur un lien avec href watch intercepté par Polymer
+      // 3. Clic sur un lien avec href watch intercepté par Polymer
       const link = document.createElement('a');
       link.href = '/watch?v=' + videoId;
       link.style.display = 'none';
@@ -464,6 +485,30 @@
             else mp.mute();
           }
           break;
+        case 'play-track': {
+          const vId = typeof value === 'string' ? value : value?.videoId;
+          if (vId && mp && typeof mp.loadVideoById === 'function') {
+            try {
+              mp.loadVideoById(vId);
+              if (typeof mp.playVideo === 'function') {
+                mp.playVideo();
+                setTimeout(() => { try { mp.playVideo(); } catch (e) {} }, 80);
+                setTimeout(() => { try { mp.playVideo(); } catch (e) {} }, 250);
+              }
+              runSync();
+            } catch (err) {}
+          }
+          break;
+        }
+        case 'play-queue-index': {
+          if (typeof value === 'number' && mp && typeof mp.playVideoAt === 'function') {
+            try {
+              mp.playVideoAt(value);
+              runSync();
+            } catch (err) {}
+          }
+          break;
+        }
       }
     } catch (err) {
       console.warn('[YTM Bridge] Erreur contrôle player:', err);

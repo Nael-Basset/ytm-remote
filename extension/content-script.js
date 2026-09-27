@@ -237,11 +237,17 @@
   // Pont page pour playerApi si accessible
   function callPlayerAction(action, value) {
     const video = document.querySelector('video');
+    const hasMoviePlayer = !!document.getElementById('movie_player');
 
     // 1. Toujours notifier le MAIN-world (queue-bridge) qui a accès direct à movie_player sans restriction Firefox
     try {
       window.dispatchEvent(new CustomEvent('ytm-player-control', { detail: JSON.stringify({ action, value }) }));
     } catch (e) {}
+
+    // Si movie_player existe, queue-bridge le contrôle de manière native et fiable (évite les conflits d'inversion)
+    if (hasMoviePlayer && ['play', 'pause', 'play-pause', 'next', 'prev', 'seek', 'volume', 'mute-toggle', 'play-track'].includes(action)) {
+      return;
+    }
 
     switch (action) {
       case 'play':
