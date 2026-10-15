@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const el = {
     albumArt:    document.getElementById('album-art'),
+    artWrap:     document.getElementById('thumbnail-wrap'),
     bgArt:       document.getElementById('bg-art'),
     bgAccent:    document.getElementById('bg-accent'),
     title:       document.getElementById('track-title'),
@@ -134,10 +135,13 @@ document.addEventListener('DOMContentLoaded', () => {
       lastArtUrl = art;
       el.albumArt.src = art;
       el.bgArt.style.backgroundImage = `url("${art}")`;
+      el.artWrap.style.setProperty('--art', `url("${art}")`);
       extractAccent(art);
     } else if (!art && el.albumArt.src.indexOf('icon128.png') === -1) {
       el.albumArt.src = 'icons/icon128.png';
       el.bgArt.style.backgroundImage = '';
+      el.artWrap.style.removeProperty('--art');
+      lastArtUrl = '';
     }
 
     el.totalTime.textContent = formatTime(info.duration);
@@ -356,17 +360,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function updateSleepCountdown() {
     browser.storage.local.get('sleepTimerEndsAt').then(({ sleepTimerEndsAt }) => {
-      if (!sleepTimerEndsAt) {
-        el.timerCountdown.hidden = true;
-        return;
-      }
-      const remaining = sleepTimerEndsAt - Date.now();
-      if (remaining <= 0) {
-        el.timerCountdown.hidden = true;
-        return;
-      }
-      el.timerCountdown.hidden = false;
-      el.timerCountdown.textContent = formatTime(remaining / 1000);
+      const remaining = sleepTimerEndsAt ? sleepTimerEndsAt - Date.now() : 0;
+      const active = remaining > 0;
+      el.timerCountdown.hidden = !active;
+      el.timerCountdown.parentElement.classList.toggle('active', active);
+      if (active) el.timerCountdown.textContent = formatTime(remaining / 1000);
     });
   }
   setInterval(updateSleepCountdown, 1000);

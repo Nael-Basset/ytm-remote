@@ -18,19 +18,19 @@
     "message": "Sleep Timer:"
   },
   "none": {
-    "message": "None"
+    "message": "No sleep timer"
   },
   "15Minutes": {
-    "message": "15 Minutes"
+    "message": "15 min"
   },
   "30Minutes": {
-    "message": "30 Minutes"
+    "message": "30 min"
   },
   "45Minutes": {
-    "message": "45 Minutes"
+    "message": "45 min"
   },
   "60Minutes": {
-    "message": "60 Minutes"
+    "message": "60 min"
   },
   "sleepTimerTitle": {
     "message": "Sleep Timer"

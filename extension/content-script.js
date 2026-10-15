@@ -92,6 +92,51 @@
   }
 
   // ==========================================
+  // Pochettes : la meilleure image disponible pour chaque piste
+  // ==========================================
+  // - Titres audio : pochette carrée googleusercontent, demandée en 544 px.
+  // - Clips vidéo : YouTube Music ne fournit que sddefault/hqdefault, des images 4:3 avec des
+  //   bandes noires intégrées. On prend à la place l'image 16:9 sans bandes (hq720 si elle existe,
+  //   sinon mqdefault) ; les interfaces l'affichent en entier sur un fond flouté.
+  function ytThumbVideoId(u) {
+    const m = /^https:\/\/i\d?\.ytimg\.com\/vi(?:_webp)?\/([a-zA-Z0-9_-]{11})\//.exec(String(u || ''));
+    return m ? m[1] : '';
+  }
+
+  const bestVideoThumbCache = new Map();
+  function bestVideoThumb(videoId) {
+    if (bestVideoThumbCache.has(videoId)) return bestVideoThumbCache.get(videoId);
+    const fallback = `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+    bestVideoThumbCache.set(videoId, fallback);
+    const probe = new Image();
+    probe.onload = () => {
+      // Une image absente renvoie un petit visuel de remplacement 120x90
+      if (probe.naturalWidth >= 640) {
+        bestVideoThumbCache.set(videoId, probe.src);
+        setTimeout(broadcastP2PState, 0);
+      }
+    };
+    probe.src = `https://i.ytimg.com/vi/${videoId}/hq720.jpg`;
+    return fallback;
+  }
+
+  // Grande pochette (lecteur, PiP, popup, télécommande)
+  function bigArt(u, videoId) {
+    const href = safeHttpsUrl(u);
+    const id = ytThumbVideoId(href) || (!href && videoId) || '';
+    if (id) return bestVideoThumb(id);
+    if (/\.(googleusercontent|ggpht)\.com\//.test(href)) return href.replace(/=w\d+-h\d+/, '=w544-h544');
+    return href;
+  }
+
+  // Petite vignette (file d'attente, recherche) : 16:9 sans bandes, recadrée en carré par l'interface
+  function smallArt(u) {
+    const href = safeHttpsUrl(u);
+    const id = ytThumbVideoId(href);
+    return id ? `https://i.ytimg.com/vi/${id}/mqdefault.jpg` : href;
+  }
+
+  // ==========================================
   // 1. Thème et Effet de Flou d'Arrière-Plan
   // ==========================================
   const pageBlurStyles = `
@@ -585,8 +630,13 @@
       out.shuffled = true;
     }
 
-    const repeatBtn = document.querySelector('tp-yt-paper-icon-button.repeat.ytmusic-player-bar, .repeat.ytmusic-player-bar, ytmusic-player-bar tp-yt-paper-icon-button[aria-label*="repeat" i], ytmusic-player-bar tp-yt-paper-icon-button[aria-label*="répét" i]');
-    if (repeatBtn) {
+    // Source fiable et indépendante de la langue : l'attribut repeat-mode de la barre de lecture
+    const barRepeatMode = document.querySelector('ytmusic-player-bar')?.getAttribute('repeat-mode');
+    const REPEAT_MODES = { NONE: 0, ALL: 1, ONE: 2 };
+    const repeatBtn = barRepeatMode in REPEAT_MODES ? null : document.querySelector('tp-yt-paper-icon-button.repeat.ytmusic-player-bar, .repeat.ytmusic-player-bar, ytmusic-player-bar tp-yt-paper-icon-button[aria-label*="repeat" i], ytmusic-player-bar tp-yt-paper-icon-button[aria-label*="répét" i]');
+    if (barRepeatMode in REPEAT_MODES) {
+      out.repeatMode = REPEAT_MODES[barRepeatMode];
+    } else if (repeatBtn) {
       const aria = (repeatBtn.getAttribute('aria-label') || '').toLowerCase();
       const title = (repeatBtn.getAttribute('title') || '').toLowerCase();
       const iconAttr = (repeatBtn.getAttribute('icon') || '').toLowerCase();
@@ -868,12 +918,10 @@
     }
     if (!albumArt) {
       const albumArtImg = document.querySelector('#song-image img') || document.querySelector('.image.ytmusic-player-bar img');
-      albumArt = albumArtImg ? albumArtImg.src : '';
+      albumArt = albumArtImg ? safeHttpsUrl(albumArtImg.src) : '';
     }
     const currentVideoId = document.documentElement.getAttribute('data-ytm-current-videoid');
-    if (!albumArt && currentVideoId) {
-      albumArt = `https://i.ytimg.com/vi/${currentVideoId}/mqdefault.jpg`;
-    }
+    albumArt = bigArt(albumArt, VIDEO_ID_RE.test(currentVideoId || '') ? currentVideoId : '');
 
     const duration = video ? video.duration || 0 : 0;
     const currentTime = video ? video.currentTime || 0 : 0;
@@ -896,7 +944,7 @@
       isPlaying,
       playbackRate,
       inPip: !!inPip,
-      queue: readUpcomingQueue(),
+      queue: readUpcomingQueue().map(it => ({ ...it, thumbnail: smallArt(it.thumbnail) })),
       ...readToggleStates()
     };
   }
@@ -916,6 +964,29 @@
   }
   function remoteUrl() {
     return 'https://nael-basset.github.io/ytm-remote/#' + ytmRoomId;
+  }
+
+  const PHONE_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>';
+
+  // Copie le lien de la télécommande depuis le document du bouton (page ou fenêtre PiP)
+  async function copyRemoteLink(btn) {
+    const doc = btn.ownerDocument;
+    const label = btn.textContent;
+    let ok = false;
+    try {
+      await doc.defaultView.navigator.clipboard.writeText(remoteUrl());
+      ok = true;
+    } catch (e) {
+      const ta = doc.createElement('textarea');
+      ta.value = remoteUrl();
+      ta.style.cssText = 'position: fixed; opacity: 0;';
+      doc.body.appendChild(ta);
+      ta.select();
+      try { ok = doc.execCommand('copy'); } catch (err) {}
+      ta.remove();
+    }
+    btn.textContent = ok ? 'Lien copié ✓' : 'Copie impossible';
+    setTimeout(() => { btn.textContent = label; }, 1600);
   }
 
   // QR code généré localement (qrcode.min.js est chargé comme content script) :
@@ -1232,14 +1303,14 @@
         <div class="qr-modal closed" id="pip-qr-modal">
           <div class="qr-modal-card">
             <div class="qr-modal-header">
-              <span class="qr-title">📱 Télécommande Mobile</span>
+              <span class="qr-title">${PHONE_ICON} Télécommande smartphone</span>
               <button class="qr-close-btn" id="pip-qr-close" title="Fermer">✕</button>
             </div>
             <div class="qr-code-box" id="pip-qr-box">
               <div id="pip-qr-container"></div>
             </div>
-            <div class="qr-url-text" id="pip-qr-url">https://nael-basset.github.io/ytm-remote/</div>
-            <div class="qr-hint">Scannez ce QR Code avec votre téléphone (compatible Wi-Fi, 4G, 5G) pour contrôler YouTube Music à distance.</div>
+            <div class="qr-hint">Scannez ce QR Code avec votre téléphone. Chaque nouvel appareil doit être autorisé sur le PC.</div>
+            <button class="qr-copy-btn" id="pip-qr-copy">Copier le lien</button>
           </div>
         </div>
       </div>
@@ -1247,6 +1318,7 @@
 
     const pel = {
       app: doc.getElementById('pip-app'),
+      artWrap: doc.getElementById('pip-art-wrap'),
       bgAmbient: doc.getElementById('pip-bg-ambient'),
       albumArt: doc.getElementById('pip-album-art'),
       title: doc.getElementById('pip-title'),
@@ -1281,7 +1353,7 @@
       qrModal: doc.getElementById('pip-qr-modal'),
       qrClose: doc.getElementById('pip-qr-close'),
       qrContainer: doc.getElementById('pip-qr-container'),
-      qrUrl: doc.getElementById('pip-qr-url')
+      qrCopy: doc.getElementById('pip-qr-copy')
     };
 
     let userSeeking = false;
@@ -1379,9 +1451,7 @@
 
     // Gestion de la Télécommande Smartphone (QR Code)
     function showQrModal() {
-      const targetUrl = remoteUrl();
-      pel.qrUrl.textContent = targetUrl;
-      renderQrCode(pel.qrContainer, targetUrl, 140);
+      renderQrCode(pel.qrContainer, remoteUrl(), 140);
       pel.qrModal.classList.remove('closed');
     }
 
@@ -1394,6 +1464,8 @@
         }
       });
     }
+
+    pel.qrCopy.addEventListener('click', () => copyRemoteLink(pel.qrCopy));
 
     if (pel.qrClose) {
       pel.qrClose.addEventListener('click', () => {
@@ -1444,6 +1516,7 @@
       if (art && pel.albumArt.src !== art) {
         pel.albumArt.src = art;
         pel.bgAmbient.style.backgroundImage = `url("${art}")`;
+        pel.artWrap.style.setProperty('--art', `url("${art}")`);
       }
 
       pel.totalTime.textContent = formatTime(info.duration);
@@ -1779,7 +1852,6 @@
     if (!pageQrModal) return;
     const targetUrl = remoteUrl();
     renderQrCode(pageQrModal.querySelector('#ytmp-page-qr-box'), targetUrl, 160);
-    pageQrModal.querySelector('#ytmp-page-qr-url').textContent = targetUrl;
 
     const list = pageQrModal.querySelector('#ytmp-page-devices');
     list.textContent = '';
@@ -1794,7 +1866,10 @@
       const row = document.createElement('div');
       row.style.cssText = 'display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; padding: 4px 0;';
       const name = document.createElement('span');
-      name.textContent = '🟢 ' + info.name;
+      name.style.cssText = 'display: flex; align-items: center; gap: 8px;';
+      const dot = document.createElement('span');
+      dot.style.cssText = 'width: 7px; height: 7px; border-radius: 50%; background: #00e676; box-shadow: 0 0 6px #00e676; flex-shrink: 0;';
+      name.append(dot, info.name);
       const kick = document.createElement('button');
       kick.style.cssText = BTN_STYLE;
       kick.textContent = 'Déconnecter';
@@ -1817,12 +1892,12 @@
     pageQrModal.innerHTML = `
       <div style="background: rgba(22, 24, 30, 0.98); border: 1px solid rgba(255,255,255,0.15); border-radius: 16px; padding: 22px; width: 320px; text-align: center; box-shadow: 0 16px 48px rgba(0,0,0,0.9); font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; color: #fff;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-          <span style="font-size: 14px; font-weight: 700; display:flex; align-items:center; gap:6px;">📱 Télécommande Smartphone</span>
+          <span style="font-size: 14px; font-weight: 700; display:flex; align-items:center; gap:8px;">${PHONE_ICON} Télécommande smartphone</span>
           <button id="ytmp-page-qr-close" style="background: rgba(255,255,255,0.1); border: none; color: #fff; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 13px;">✕</button>
         </div>
         <div id="ytmp-page-qr-box" style="background: #fff; padding: 12px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.2); color: #000; font-size: 11px;"></div>
-        <div id="ytmp-page-qr-url" style="font-size: 12px; font-weight: 700; color: #ff0055; margin-top: 14px; font-family: monospace; word-break: break-all;"></div>
-        <div style="font-size: 11.5px; color: rgba(255,255,255,0.65); margin-top: 8px; line-height: 1.45;">Scannez ce QR Code avec votre téléphone. Chaque nouvel appareil doit être autorisé ici, sur le PC.</div>
+        <div style="font-size: 11.5px; color: rgba(255,255,255,0.65); margin-top: 12px; line-height: 1.45;">Scannez ce QR Code avec votre téléphone. Chaque nouvel appareil doit être autorisé ici, sur le PC.</div>
+        <button id="ytmp-page-copy-link" style="${BTN_STYLE} margin-top: 10px;">Copier le lien</button>
         <div style="text-align: left; margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
           <div style="font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.6); margin-bottom: 6px;">APPAREILS CONNECTÉS</div>
           <div id="ytmp-page-devices"></div>
@@ -1836,6 +1911,8 @@
 
     document.body.appendChild(pageQrModal);
     pageQrModal.querySelector('#ytmp-page-qr-close').addEventListener('click', closePageQrModal);
+    const copyBtn = pageQrModal.querySelector('#ytmp-page-copy-link');
+    copyBtn.addEventListener('click', () => copyRemoteLink(copyBtn));
     pageQrModal.querySelector('#ytmp-page-new-link').addEventListener('click', () => regenerateRoom());
     pageQrModal.querySelector('#ytmp-page-forget').addEventListener('click', async () => {
       await browser.storage.local.remove(TRUSTED_KEY);
@@ -2039,7 +2116,7 @@
           const thumbs = r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails || [];
           let thumbnail = thumbs.length > 0 ? thumbs[thumbs.length - 1].url : '';
           if (thumbnail.startsWith('//')) thumbnail = 'https:' + thumbnail;
-          if (!thumbnail && videoId) thumbnail = `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+          thumbnail = smallArt(thumbnail) || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
 
           if (title && videoId) {
             return {
@@ -2170,8 +2247,9 @@
         const toast = doc.createElement('div');
         toast.style.cssText = 'position: fixed; right: 16px; bottom: 96px; z-index: 1000000; width: 260px; background: rgba(22,24,30,0.98); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; padding: 14px; color: #fff; font: 13px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; box-shadow: 0 12px 36px rgba(0,0,0,0.8);';
         const title = doc.createElement('div');
-        title.style.cssText = 'font-weight: 700; margin-bottom: 6px;';
-        title.textContent = '📱 Nouvelle télécommande';
+        title.style.cssText = 'font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;';
+        title.innerHTML = PHONE_ICON; // icône statique
+        title.append('Nouvelle télécommande');
         const msg = doc.createElement('div');
         msg.style.cssText = 'color: rgba(255,255,255,0.75); margin-bottom: 10px; line-height: 1.4;';
         msg.textContent = `« ${deviceName} » veut contrôler YouTube Music. Autoriser cet appareil ?`;

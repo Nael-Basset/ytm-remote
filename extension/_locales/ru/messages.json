@@ -18,19 +18,19 @@
     "message": "Таймер сна:"
   },
   "none": {
-    "message": "Выкл"
+    "message": "Без таймера"
   },
   "15Minutes": {
-    "message": "15 минут"
+    "message": "15 мин"
   },
   "30Minutes": {
-    "message": "30 минут"
+    "message": "30 мин"
   },
   "45Minutes": {
-    "message": "45 минут"
+    "message": "45 мин"
   },
   "60Minutes": {
-    "message": "60 минут"
+    "message": "60 мин"
   },
   "sleepTimerTitle": {
     "message": "Таймер сна"

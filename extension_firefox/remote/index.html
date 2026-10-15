@@ -3,17 +3,43 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0c0d11" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f3f4f7" media="(prefers-color-scheme: light)">
   <title>YouTube Music Remote</title>
   <style>
     :root {
-      --bg: #0c0d11;
+      color-scheme: dark;
+      --fg-rgb: 255 255 255;
+      --bg-rgb: 12 13 17;
+      --shade-rgb: 0 0 0;
+      --bg: rgb(var(--bg-rgb));
+      --surface: #181a20;
       --card-bg: rgba(22, 24, 31, 0.72);
-      --card-hover: rgba(255, 255, 255, 0.08);
+      --panel-bg: rgba(18, 20, 26, 0.8);
+      --card-hover: rgb(var(--fg-rgb) / 0.08);
       --accent: #ff0055;
       --accent-glow: rgba(255, 0, 85, 0.35);
-      --text: #ffffff;
-      --text-dim: rgba(255, 255, 255, 0.65);
-      --border: rgba(255, 255, 255, 0.1);
+      --text: rgb(var(--fg-rgb));
+      --text-dim: rgb(var(--fg-rgb) / 0.65);
+      --border: rgb(var(--fg-rgb) / 0.1);
+      --cover-shadow: 0 12px 36px rgba(0, 0, 0, 0.75);
+      --ambient-filter: blur(50px) saturate(2.4) brightness(0.5);
+    }
+    /* Thème clair : suit le réglage du téléphone */
+    @media (prefers-color-scheme: light) {
+      :root {
+        color-scheme: light;
+        --fg-rgb: 22 24 30;
+        --bg-rgb: 243 244 247;
+        --shade-rgb: 255 255 255;
+        --surface: #e4e6ec;
+        --card-bg: rgba(255, 255, 255, 0.72);
+        --panel-bg: rgba(255, 255, 255, 0.7);
+        --text-dim: rgb(var(--fg-rgb) / 0.6);
+        --border: rgb(var(--fg-rgb) / 0.12);
+        --cover-shadow: 0 12px 30px rgba(20, 22, 30, 0.25);
+        --ambient-filter: blur(50px) saturate(1.6) brightness(1.15);
+      }
     }
     * {
       box-sizing: border-box;
@@ -40,7 +66,7 @@
       inset: -40px;
       background-size: cover;
       background-position: center;
-      filter: blur(50px) saturate(2.4) brightness(0.5);
+      filter: var(--ambient-filter);
       opacity: 0.85;
       transform: scale(1.2);
       transition: background-image 0.5s ease;
@@ -50,7 +76,7 @@
     .ambient-overlay {
       position: fixed;
       inset: 0;
-      background: radial-gradient(circle at 50% 30%, rgba(12,13,17,0.3) 0%, rgba(12,13,17,0.92) 100%);
+      background: radial-gradient(circle at 50% 30%, rgb(var(--bg-rgb) / 0.3) 0%, rgb(var(--bg-rgb) / 0.92) 100%);
       z-index: 1;
       pointer-events: none;
     }
@@ -70,7 +96,7 @@
       gap: 7px;
       font-size: 11.5px;
       color: var(--text-dim);
-      background: rgba(0, 0, 0, 0.35);
+      background: rgb(var(--shade-rgb) / 0.35);
       border: 1px solid var(--border);
       padding: 4px 12px;
       border-radius: 20px;
@@ -95,22 +121,35 @@
     }
     /* Pochette */
     .cover-wrap {
+      position: relative;
       width: min(65vw, 240px);
       height: min(65vw, 240px);
       border-radius: 16px;
       overflow: hidden;
-      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.75);
-      background: #181a20;
+      box-shadow: var(--cover-shadow);
+      background: var(--surface);
       margin: 6px 0 14px;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
     }
+    /* Pochette entière (les clips sont en 16:9) sur un fond flouté de la même image */
+    .cover-wrap::before {
+      content: "";
+      position: absolute;
+      inset: -16px;
+      background: var(--art, none) center / cover no-repeat;
+      filter: blur(18px) brightness(0.7);
+    }
     .cover-img {
+      position: relative;
       width: 100%;
       height: 100%;
-      object-fit: cover;
+      object-fit: contain;
+    }
+    .cover-img:not([src]), .cover-img[src=""] {
+      visibility: hidden;
     }
     /* Métadonnées */
     .track-meta {
@@ -179,7 +218,7 @@
     }
     .btn-nav:active {
       transform: scale(0.9);
-      background: rgba(255, 255, 255, 0.1);
+      background: rgb(var(--fg-rgb) / 0.1);
     }
     .btn-play {
       background: var(--accent);
@@ -224,6 +263,8 @@
     }
     .btn-tgl.active {
       color: var(--accent);
+      background: rgba(255, 0, 85, 0.14);
+      box-shadow: inset 0 0 0 1px rgba(255, 0, 85, 0.35);
     }
     /* Barre Volume */
     .volume-box {
@@ -246,7 +287,7 @@
     /* Section Paroles */
     .lyrics-section {
       width: 100%;
-      background: rgba(18, 20, 26, 0.82);
+      background: var(--panel-bg);
       border: 1px solid var(--border);
       border-radius: 16px;
       padding: 14px;
@@ -275,8 +316,8 @@
       color: var(--text-dim);
     }
     .btn-fullscreen-lyrics {
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgb(var(--fg-rgb) / 0.08);
+      border: 1px solid rgb(var(--fg-rgb) / 0.12);
       color: var(--text);
       cursor: pointer;
       width: 34px;
@@ -289,7 +330,7 @@
     }
     .btn-fullscreen-lyrics:active {
       transform: scale(0.92);
-      background: rgba(255, 255, 255, 0.2);
+      background: rgb(var(--fg-rgb) / 0.2);
     }
     .lyrics-scroll {
       max-height: 360px;
@@ -323,49 +364,49 @@
       transition: opacity 0.3s ease, filter 0.3s ease, background 0.25s ease;
     }
     .lyric-line:active {
-      background: rgba(255, 255, 255, 0.06);
+      background: rgb(var(--fg-rgb) / 0.06);
     }
     .lyric-line.active {
       opacity: 1;
       filter: none;
       font-size: 18px;
       font-weight: 800;
-      background: rgba(255, 255, 255, 0.04);
+      background: rgb(var(--fg-rgb) / 0.04);
     }
     .lyric-line.past-line {
       opacity: 0.55;
       filter: none;
     }
     .lyric-line.past-line .lyric-word {
-      color: rgba(255, 255, 255, 0.72);
-      -webkit-text-fill-color: rgba(255, 255, 255, 0.72);
+      color: rgb(var(--fg-rgb) / 0.72);
+      -webkit-text-fill-color: rgb(var(--fg-rgb) / 0.72);
     }
 
     /* Animation mot par mot au fur et à mesure de la prononciation (Style BetterLyrics sans grossissement) */
     .lyric-word {
       display: inline-block;
       white-space: pre;
-      color: rgba(255, 255, 255, 0.3);
-      -webkit-text-fill-color: rgba(255, 255, 255, 0.3);
+      color: rgb(var(--fg-rgb) / 0.3);
+      -webkit-text-fill-color: rgb(var(--fg-rgb) / 0.3);
       transition: color 0.12s ease, filter 0.18s ease;
     }
     .lyric-word.future {
-      color: rgba(255, 255, 255, 0.3);
-      -webkit-text-fill-color: rgba(255, 255, 255, 0.3);
+      color: rgb(var(--fg-rgb) / 0.3);
+      -webkit-text-fill-color: rgb(var(--fg-rgb) / 0.3);
       filter: none;
     }
     .lyric-word.singing {
-      background: linear-gradient(90deg, #ffffff var(--prog, 0%), rgba(255, 255, 255, 0.3) var(--prog, 0%));
+      background: linear-gradient(90deg, rgb(var(--fg-rgb)) var(--prog, 0%), rgb(var(--fg-rgb) / 0.3) var(--prog, 0%));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
-      filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.75)) drop-shadow(0 0 20px rgba(255, 255, 255, 0.3));
+      filter: drop-shadow(0 0 10px rgb(var(--fg-rgb) / 0.75)) drop-shadow(0 0 20px rgb(var(--fg-rgb) / 0.3));
     }
     .lyric-word.past {
       background: none;
       -webkit-background-clip: initial;
-      color: #ffffff;
-      -webkit-text-fill-color: #ffffff;
-      filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.25));
+      color: rgb(var(--fg-rgb));
+      -webkit-text-fill-color: rgb(var(--fg-rgb));
+      filter: drop-shadow(0 0 5px rgb(var(--fg-rgb) / 0.25));
     }
     /* Mode Plein Écran pour les paroles (Ancrage parfait sans glitch) */
     .lyrics-section.is-fullscreen {
@@ -381,7 +422,7 @@
       max-width: none;
       border-radius: 0;
       border: none;
-      background: rgba(10, 11, 15, 0.98);
+      background: rgb(var(--bg-rgb) / 0.98);
       backdrop-filter: blur(50px);
       margin: 0;
       padding: max(16px, env(safe-area-inset-top, 16px)) 16px 0;
@@ -402,7 +443,7 @@
       width: 40px;
       height: 40px;
       border-radius: 50%;
-      background: rgba(255, 255, 255, 0.16);
+      background: rgb(var(--fg-rgb) / 0.16);
     }
     .lyrics-section.is-fullscreen .lyrics-scroll {
       max-height: none;
@@ -420,9 +461,9 @@
     .lyrics-section.is-fullscreen .lyric-line.active {
       font-size: 24px;
       font-weight: 800;
-      color: #ffffff;
-      text-shadow: 0 0 20px rgba(255, 255, 255, 0.6);
-      background: rgba(255, 255, 255, 0.06);
+      color: rgb(var(--fg-rgb));
+      text-shadow: 0 0 20px rgb(var(--fg-rgb) / 0.6);
+      background: rgb(var(--fg-rgb) / 0.06);
       border-radius: 12px;
     }
     .lyrics-fullscreen-controls {
@@ -436,7 +477,7 @@
       gap: 28px;
       padding: 12px 0 max(16px, env(safe-area-inset-bottom, 16px));
       border-top: 1px solid var(--border);
-      background: rgba(10, 11, 15, 0.85);
+      background: rgb(var(--bg-rgb) / 0.85);
       backdrop-filter: blur(20px);
     }
     .btn-fs-nav {
@@ -468,7 +509,7 @@
       width: 100%;
       display: flex;
       flex-direction: column;
-      background: rgba(18, 20, 26, 0.75);
+      background: var(--panel-bg);
       border: 1px solid var(--border);
       border-radius: 16px;
       padding: 14px;
@@ -494,8 +535,8 @@
       gap: 9px;
     }
     .btn-queue-search {
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgb(var(--fg-rgb) / 0.08);
+      border: 1px solid rgb(var(--fg-rgb) / 0.12);
       color: var(--text);
       width: 30px;
       height: 30px;
@@ -528,8 +569,8 @@
     .search-input-wrap {
       display: flex;
       align-items: center;
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgb(var(--fg-rgb) / 0.06);
+      border: 1px solid rgb(var(--fg-rgb) / 0.14);
       border-radius: 10px;
       padding: 8px 12px;
       gap: 10px;
@@ -537,7 +578,7 @@
     }
     .search-input-wrap:focus-within {
       border-color: var(--accent);
-      background: rgba(255, 255, 255, 0.1);
+      background: rgb(var(--fg-rgb) / 0.1);
     }
     .search-icon {
       fill: var(--text-dim);
@@ -557,7 +598,7 @@
       font-weight: 400;
     }
     .search-clear-btn {
-      background: rgba(255, 255, 255, 0.1);
+      background: rgb(var(--fg-rgb) / 0.1);
       border: none;
       color: var(--text);
       font-size: 12px;
@@ -571,7 +612,7 @@
       transition: background 0.15s;
     }
     .search-clear-btn:hover {
-      background: rgba(255, 255, 255, 0.2);
+      background: rgb(var(--fg-rgb) / 0.2);
     }
     .search-status {
       font-size: 12px;
@@ -593,12 +634,12 @@
       gap: 10px;
       padding: 8px 10px;
       border-radius: 10px;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgb(var(--fg-rgb) / 0.04);
+      border: 1px solid rgb(var(--fg-rgb) / 0.06);
       transition: background 0.15s;
     }
     .search-item:hover {
-      background: rgba(255, 255, 255, 0.08);
+      background: rgb(var(--fg-rgb) / 0.08);
     }
     .search-thumb {
       width: 38px;
@@ -637,8 +678,8 @@
       flex-shrink: 0;
     }
     .btn-search-act {
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgb(var(--fg-rgb) / 0.08);
+      border: 1px solid rgb(var(--fg-rgb) / 0.12);
       color: var(--text);
       width: 32px;
       height: 32px;
@@ -670,7 +711,7 @@
     }
     .queue-count {
       font-size: 11px;
-      background: rgba(255, 255, 255, 0.1);
+      background: rgb(var(--fg-rgb) / 0.1);
       padding: 2px 7px;
       border-radius: 10px;
       color: var(--text);
@@ -756,7 +797,7 @@
       <span id="conn-text">Connexion à votre PC…</span>
     </div>
 
-    <div class="cover-wrap">
+    <div class="cover-wrap" id="cover-wrap">
       <img id="cover" class="cover-img" src="" alt="Album Art">
     </div>
 
@@ -873,7 +914,7 @@
     </div>
 
     <!-- Panneau Diagnostic / Logs -->
-    <div class="logs-card" id="logs-card" style="margin-top: 14px; background: rgba(0, 0, 0, 0.5); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 10px 12px; font-family: monospace;">
+    <div class="logs-card" id="logs-card" hidden style="margin-top: 14px; background: rgb(var(--shade-rgb) / 0.5); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; font-family: monospace;">
       <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" id="logs-toggle">
         <span style="font-size: 11.5px; font-weight: 700; color: var(--text-dim); display: flex; align-items: center; gap: 6px;">
           📋 DIAGNOSTIC & LOGS
@@ -941,6 +982,7 @@
       connText: document.getElementById('conn-text'),
       bg: document.getElementById('bg'),
       cover: document.getElementById('cover'),
+      coverWrap: document.getElementById('cover-wrap'),
       title: document.getElementById('title'),
       artist: document.getElementById('artist'),
       seek: document.getElementById('seek'),
@@ -1018,6 +1060,10 @@
     // ==========================================
     // Système de Logs & Diagnostic en temps réel
     // ==========================================
+    // Panneau de diagnostic réservé au débogage : ajouter ?debug à l'URL pour l'afficher
+    if (new URLSearchParams(location.search).has('debug')) {
+      document.getElementById('logs-card').hidden = false;
+    }
     const logsListEl = document.getElementById('logs-list');
     const logsBadgeEl = document.getElementById('logs-badge');
     const logsBodyEl = document.getElementById('logs-body');
@@ -1380,7 +1426,7 @@
         img.src = thumb;
         img.loading = 'lazy';
         img.onerror = () => {
-          img.outerHTML = '<div class="search-thumb" style="display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.06);"><svg viewBox="0 0 24 24" width="16" height="16" fill="rgba(255,255,255,0.3)"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg></div>';
+          img.outerHTML = '<div class="search-thumb" style="display:flex;align-items:center;justify-content:center;background:rgb(var(--fg-rgb) / 0.06);"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" opacity="0.35"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg></div>';
         };
         row.appendChild(img);
 
@@ -1900,15 +1946,15 @@
             if (item.videoId && !img.src.includes('ytimg.com')) {
               img.src = `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg`;
             } else {
-              img.outerHTML = '<div class="queue-thumb" style="display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.06);"><svg viewBox="0 0 24 24" width="18" height="18" fill="rgba(255,255,255,0.3)"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg></div>';
+              img.outerHTML = '<div class="queue-thumb" style="display:flex;align-items:center;justify-content:center;background:rgb(var(--fg-rgb) / 0.06);"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" opacity="0.35"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg></div>';
             }
           };
           row.appendChild(img);
         } else {
           const noImg = document.createElement('div');
           noImg.className = 'queue-thumb';
-          noImg.style.cssText = 'display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.06);';
-          noImg.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="rgba(255,255,255,0.3)"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>';
+          noImg.style.cssText = 'display:flex;align-items:center;justify-content:center;background:rgb(var(--fg-rgb) / 0.06);';
+          noImg.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" opacity="0.35"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>';
           row.appendChild(noImg);
         }
 
@@ -1969,6 +2015,7 @@
         lastArt = art;
         el.cover.src = art;
         el.bg.style.backgroundImage = 'url("' + art + '")';
+        el.coverWrap.style.setProperty('--art', 'url("' + art + '")');
       }
       el.playIcon.innerHTML = s.isPlaying ? PAUSE_SVG : PLAY_SVG;
       if (el.fsPlayIcon) el.fsPlayIcon.innerHTML = s.isPlaying ? PAUSE_SVG : PLAY_SVG;

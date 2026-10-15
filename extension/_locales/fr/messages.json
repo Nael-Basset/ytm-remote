@@ -18,19 +18,19 @@
     "message": "Minuteur de veille :"
   },
   "none": {
-    "message": "Aucun"
+    "message": "Sans minuteur"
   },
   "15Minutes": {
-    "message": "15 minutes"
+    "message": "15 min"
   },
   "30Minutes": {
-    "message": "30 minutes"
+    "message": "30 min"
   },
   "45Minutes": {
-    "message": "45 minutes"
+    "message": "45 min"
   },
   "60Minutes": {
-    "message": "60 minutes"
+    "message": "60 min"
   },
   "sleepTimerTitle": {
     "message": "Minuteur de veille"
