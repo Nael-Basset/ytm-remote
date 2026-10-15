@@ -745,11 +745,6 @@
     }
   </style>
   <script src="peerjs.min.js"></script>
-  <script>
-    if (typeof Peer === 'undefined') {
-      document.write('<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"><\/script>');
-    }
-  </script>
 </head>
 <body>
   <div class="ambient-bg" id="bg"></div>
@@ -899,6 +894,9 @@
   </div>
 
   <script>
+    // Les messages transitent en texte JSON brut sur le RTCDataChannel natif (le canal JSON de PeerJS
+    // refuse tout message > 16 Ko). PeerJS écoute le même canal et appelle TextDecoder.decode() sur
+    // ces chaînes : ce patch lui évite de lever une exception à chaque message.
     if (typeof TextDecoder !== 'undefined') {
       const origDecode = TextDecoder.prototype.decode;
       TextDecoder.prototype.decode = function (input, options) {
@@ -913,6 +911,16 @@
 
     function vibrate() {
       if ('vibrate' in navigator) navigator.vibrate(15);
+    }
+
+    // URL https normalisée (guillemets percent-encodés) : sûre dans src= et dans url("…") CSS
+    function safeHttpsUrl(u) {
+      try {
+        const url = new URL(String(u || ''));
+        return url.protocol === 'https:' ? url.href.replace(/"/g, '%22') : '';
+      } catch (e) {
+        return '';
+      }
     }
 
     function formatTime(s) {
@@ -975,7 +983,37 @@
     // ==========================================
     let peer = null;
     let dataChannel = null;
-    const targetRoomId = (location.hash ? location.hash.slice(1) : new URLSearchParams(location.search).get('room') || '').trim();
+    const rawRoomId = (location.hash ? decodeURIComponent(location.hash.slice(1)) : new URLSearchParams(location.search).get('room') || '').trim();
+    const targetRoomId = /^ytm-[a-z0-9-]{4,64}$/.test(rawRoomId) ? rawRoomId : '';
+
+    // Identifiant secret et persistant de cet appareil : le PC s'en sert pour mémoriser
+    // les appareils déjà autorisés.
+    function getDeviceId() {
+      try {
+        let id = localStorage.getItem('ytmr_device_id');
+        if (!id || !/^[a-f0-9]{32}$/.test(id)) {
+          const bytes = crypto.getRandomValues(new Uint8Array(16));
+          id = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+          localStorage.setItem('ytmr_device_id', id);
+        }
+        return id;
+      } catch (e) {
+        const bytes = crypto.getRandomValues(new Uint8Array(16));
+        return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+      }
+    }
+    const deviceId = getDeviceId();
+    function getDeviceName() {
+      const ua = navigator.userAgent || '';
+      if (/iPhone/i.test(ua)) return 'iPhone';
+      if (/iPad/i.test(ua)) return 'iPad';
+      if (/Android/i.test(ua)) return /Mobile/i.test(ua) ? 'Téléphone Android' : 'Tablette Android';
+      if (/Mac OS X/i.test(ua)) return 'Mac';
+      if (/Windows/i.test(ua)) return 'PC Windows';
+      return 'Navigateur';
+    }
+    // 'pending' | 'approved' | 'denied' | 'revoked'
+    let authStatus = 'pending';
 
     // ==========================================
     // Système de Logs & Diagnostic en temps réel
@@ -1005,7 +1043,14 @@
         if (logsCount === 1) logsListEl.innerHTML = '';
         const row = document.createElement('div');
         row.style.cssText = `color: ${color}; word-break: break-all; border-bottom: 1px solid rgba(255,255,255,0.03); padding-bottom: 2px;`;
-        row.innerHTML = `<span style="opacity:0.5;">[${timeStr}]</span> <strong style="color:${color};">[${tag}]</strong> ${msg}`;
+        // Le message peut contenir des titres ou des données reçues du réseau : jamais d'innerHTML.
+        const timeEl = document.createElement('span');
+        timeEl.style.opacity = '0.5';
+        timeEl.textContent = `[${timeStr}]`;
+        const tagEl = document.createElement('strong');
+        tagEl.style.color = color;
+        tagEl.textContent = `[${tag}]`;
+        row.append(timeEl, ' ', tagEl, ' ', String(msg));
         logsListEl.appendChild(row);
         if (isLogsOpen) {
           logsBodyEl.scrollTop = logsBodyEl.scrollHeight;
@@ -1049,29 +1094,29 @@
 
     addLog('INIT', 'Démarrage télécommande. Room cible: ' + (targetRoomId || 'AUCUNE (flashez le QR)'), '#fff');
 
+    // Envoi unique en texte JSON sur le RTCDataChannel natif (voir le commentaire du patch TextDecoder)
+    function sendRaw(payload) {
+      const dc = dataChannel && dataChannel.dataChannel;
+      if (!payload || !dc || dc.readyState !== 'open') return false;
+      try {
+        dc.send(JSON.stringify(payload));
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+
     function sendP2PMessage(payload) {
-      if (!payload) return false;
-      let sent = false;
-      // 1. Envoi prioritaire via PeerJS DataConnection (sérialisation officielle)
-      if (dataChannel && dataChannel.open) {
-        try {
-          dataChannel.send(payload);
-          sent = true;
-        } catch (e) {}
-      }
-      // 2. Envoi direct via RTCDataChannel natif uniquement si PeerJS n'a pas pu émettre
-      if (!sent && dataChannel && dataChannel.dataChannel && dataChannel.dataChannel.readyState === 'open') {
-        try {
-          const encoded = new TextEncoder().encode(JSON.stringify(payload));
-          dataChannel.dataChannel.send(encoded);
-          sent = true;
-        } catch (e) {}
-      }
-      return sent;
+      if (authStatus !== 'approved') return false;
+      return sendRaw(payload);
     }
 
     function sendAction(action, value = null) {
       vibrate();
+      if (authStatus !== 'approved') {
+        addLog('ERR', 'Action ignorée (' + action + ') : appareil pas encore autorisé par le PC', '#ff3366');
+        return;
+      }
       const valStr = (value !== null && value !== undefined) ? ' ' + JSON.stringify(value) : '';
       const msgId = 'act-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
       const payload = { action, value, msgId };
@@ -1109,6 +1154,7 @@
           el.connDot.className = 'status-dot disconnected';
           el.connText.textContent = 'Erreur réseau : reconnexion…';
           addLog('ERR', 'Erreur PeerJS: ' + (err?.type || err?.message || err), '#ff3366');
+          if (authStatus === 'denied' || authStatus === 'revoked') return;
           if (peer.disconnected && !peer.destroyed) {
             addLog('CONN', 'Reconnexion au serveur de signalisation…', '#ffbb00');
             peer.reconnect();
@@ -1131,13 +1177,36 @@
       }
     }
 
+    function setAuthStatus(status) {
+      authStatus = status;
+      if (status === 'approved') {
+        el.connDot.className = 'status-dot connected';
+        el.connText.textContent = 'Connecté en direct à votre PC';
+        addLog('AUTH', 'Appareil autorisé par le PC', '#00e676');
+      } else if (status === 'pending') {
+        el.connDot.className = 'status-dot';
+        el.connText.textContent = 'Acceptez la connexion sur votre PC…';
+        addLog('AUTH', 'En attente d\'autorisation sur le PC', '#ffbb00');
+      } else if (status === 'denied') {
+        el.connDot.className = 'status-dot disconnected';
+        el.connText.textContent = 'Accès refusé par le PC. Rechargez pour réessayer.';
+        addLog('AUTH', 'Accès refusé par le PC', '#ff3366');
+      } else if (status === 'revoked') {
+        el.connDot.className = 'status-dot disconnected';
+        el.connText.textContent = 'Déconnecté par le PC. Rechargez pour réessayer.';
+        addLog('AUTH', 'Appareil déconnecté par le PC', '#ff3366');
+      }
+    }
+
     function connectToPeerHost() {
       if (!peer || peer.destroyed) return;
+      if (authStatus === 'denied' || authStatus === 'revoked') return;
       if (peer.disconnected) {
         peer.reconnect();
         return;
       }
       addLog('CONN', 'Tentative de connexion à ' + targetRoomId + '…', '#ffbb00');
+      authStatus = 'pending';
       dataChannel = peer.connect(targetRoomId, {
         reliable: true,
         serialization: 'json'
@@ -1145,7 +1214,6 @@
 
       let lastLoggedTrack = '';
       let lastLoggedPlay = null;
-      const handledIncomingKeys = new Set();
 
       function handleIncomingData(raw) {
         if (!raw) return;
@@ -1155,17 +1223,13 @@
         }
         if (typeof payload !== 'object' || !payload) return;
 
-        // Déduplication anti-rebond (au cas où délivré par PeerJS ET par le dataChannel natif)
-        const inKey = payload.type === 'diag-log' ? ('diag_' + payload.message) :
-                      payload.type === 'search-results' ? ('srch_' + payload.requestId) :
-                      (payload.type + '_' + JSON.stringify(payload.data?.title || '') + '_' + Math.floor(Date.now() / 200));
-
-        if (handledIncomingKeys.has(inKey)) return;
-        handledIncomingKeys.add(inKey);
-        if (handledIncomingKeys.size > 80) {
-          const first = handledIncomingKeys.values().next().value;
-          handledIncomingKeys.delete(first);
+        if (payload.type === 'auth') {
+          if (['pending', 'approved', 'denied', 'revoked'].includes(payload.status)) {
+            setAuthStatus(payload.status);
+          }
+          return;
         }
+        if (authStatus !== 'approved') return;
 
         if (payload.type === 'diag-log') {
           addLog('PC', payload.message, '#a8ff00');
@@ -1200,21 +1264,21 @@
         });
       }
 
+      // Les messages n'arrivent que par le canal natif : pas de handler dataChannel.on('data'),
+      // sinon chaque message serait traité deux fois.
       dataChannel.on('open', () => {
-        el.connDot.className = 'status-dot connected';
-        el.connText.textContent = 'Connecté en direct à votre PC';
-        addLog('CONN', 'Canal WebRTC OUVERT ! En attente de l\'état PC…', '#00e676');
+        addLog('CONN', 'Canal WebRTC ouvert. Demande d\'autorisation au PC…', '#00e676');
         if (dataChannel.dataChannel) bindNativeClientChannel(dataChannel.dataChannel);
-      });
-
-      dataChannel.on('data', (payload) => {
-        handleIncomingData(payload);
+        setAuthStatus('pending');
+        sendRaw({ type: 'hello', deviceId, deviceName: getDeviceName() });
       });
 
       dataChannel.on('close', () => {
+        if (authStatus === 'denied' || authStatus === 'revoked') return;
         el.connDot.className = 'status-dot disconnected';
         el.connText.textContent = 'Déconnecté du PC. Reconnexion…';
         addLog('CONN', 'Canal fermé. Reconnexion dans 2.5s…', '#ff9100');
+        authStatus = 'pending';
         setTimeout(connectToPeerHost, 2500);
       });
     }
@@ -1900,10 +1964,11 @@
       if (s.artist) el.artist.textContent = s.artist;
       if (s.duration) lastTrackDuration = s.duration;
 
-      if (s.albumArt && s.albumArt !== lastArt) {
-        lastArt = s.albumArt;
-        el.cover.src = s.albumArt;
-        el.bg.style.backgroundImage = 'url("' + s.albumArt + '")';
+      const art = safeHttpsUrl(s.albumArt);
+      if (art && art !== lastArt) {
+        lastArt = art;
+        el.cover.src = art;
+        el.bg.style.backgroundImage = 'url("' + art + '")';
       }
       el.playIcon.innerHTML = s.isPlaying ? PAUSE_SVG : PLAY_SVG;
       if (el.fsPlayIcon) el.fsPlayIcon.innerHTML = s.isPlaying ? PAUSE_SVG : PLAY_SVG;

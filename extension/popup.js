@@ -67,6 +67,16 @@ document.addEventListener('DOMContentLoaded', () => {
   let lastTrackKey = '';
   let lastCurrentTime = 0;
 
+  // URL https normalisée (guillemets percent-encodés) : sûre dans src= et dans url("…") CSS
+  function safeHttpsUrl(u) {
+    try {
+      const url = new URL(String(u || ''));
+      return url.protocol === 'https:' ? url.href.replace(/"/g, '%22') : '';
+    } catch (e) {
+      return '';
+    }
+  }
+
   function formatTime(t) {
     if (!isFinite(t) || t < 0) return '0:00';
     const m = Math.floor(t / 60);
@@ -119,12 +129,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Pochette & fond dynamique
-    if (info.albumArt && info.albumArt !== lastArtUrl) {
-      lastArtUrl = info.albumArt;
-      el.albumArt.src = info.albumArt;
-      el.bgArt.style.backgroundImage = `url("${info.albumArt}")`;
-      extractAccent(info.albumArt);
-    } else if (!info.albumArt && el.albumArt.src.indexOf('icon128.png') === -1) {
+    const art = safeHttpsUrl(info.albumArt);
+    if (art && art !== lastArtUrl) {
+      lastArtUrl = art;
+      el.albumArt.src = art;
+      el.bgArt.style.backgroundImage = `url("${art}")`;
+      extractAccent(art);
+    } else if (!art && el.albumArt.src.indexOf('icon128.png') === -1) {
       el.albumArt.src = 'icons/icon128.png';
       el.bgArt.style.backgroundImage = '';
     }
@@ -245,7 +256,8 @@ document.addEventListener('DOMContentLoaded', () => {
     el.qrBtn.addEventListener('click', async () => {
       const res = await send('toggle-page-qr');
       if (!res) {
-        browser.tabs.create({ url: 'http://127.0.0.1:8085' });
+        // Pas d'onglet YouTube Music prêt : on en ouvre un (le QR code s'affiche depuis la page)
+        browser.tabs.create({ url: 'https://music.youtube.com' });
       }
       window.close();
     });

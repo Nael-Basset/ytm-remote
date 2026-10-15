@@ -8,6 +8,16 @@
     if (oldTag) oldTag.remove();
   } catch (e) {}
 
+  // URL https normalisée (guillemets percent-encodés) : sûre dans src= et dans url("…") CSS
+  function safeHttpsUrl(u) {
+    try {
+      const url = new URL(String(u || ''));
+      return url.protocol === 'https:' ? url.href.replace(/"/g, '%22') : '';
+    } catch (e) {
+      return '';
+    }
+  }
+
   function cleanUrl(url) {
     if (!url) return '';
     if (url.startsWith('//')) return 'https:' + url;
@@ -180,12 +190,13 @@
         }
       }
 
-      if (thumbnail) {
+      const safeThumb = safeHttpsUrl(thumbnail);
+      if (safeThumb) {
         const albumArtImgs = document.querySelectorAll('#song-image img, .image.ytmusic-player-bar img');
         albumArtImgs.forEach(img => {
-          img.src = thumbnail;
+          img.src = safeThumb;
         });
-        document.documentElement.style.setProperty('--blyrics-background-img', `url("${thumbnail}")`);
+        document.documentElement.style.setProperty('--blyrics-background-img', `url("${safeThumb}")`);
       }
 
       if (title) {
@@ -474,7 +485,7 @@
         const el = document.querySelector(sel);
         if (el) {
           const btn = el.shadowRoot?.querySelector('button') || el.querySelector('button') || el;
-          btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, view: window }));
+          // Un seul clic (un MouseEvent en plus faisait basculer les boutons deux fois)
           try { btn.click(); } catch (err) {}
           return true;
         }
@@ -604,11 +615,34 @@
     });
   });
 
-  const observer = new MutationObserver(() => {
-    runSync();
-  });
-  const queueContainer = document.querySelector('ytmusic-player-queue') || document.body;
-  if (queueContainer) {
-    observer.observe(queueContainer, { childList: true, subtree: true });
+  // Synchronisation regroupée : au plus une passe toutes les 250 ms, quel que soit le nombre de
+  // mutations (observer document.body déclenchait runSync à chaque changement du DOM).
+  let syncScheduled = false;
+  function scheduleSync() {
+    if (syncScheduled) return;
+    syncScheduled = true;
+    setTimeout(() => {
+      syncScheduled = false;
+      runSync();
+    }, 250);
+  }
+
+  const observer = new MutationObserver(scheduleSync);
+  let observedQueue = null;
+  function observeQueue() {
+    const queueEl = document.querySelector('ytmusic-player-queue');
+    if (queueEl && queueEl !== observedQueue) {
+      observer.disconnect();
+      observer.observe(queueEl, { childList: true, subtree: true });
+      observedQueue = queueEl;
+    }
+  }
+  observeQueue();
+  // La file d'attente n'existe pas toujours au chargement : on la cherche jusqu'à la trouver
+  if (!observedQueue) {
+    const finder = setInterval(() => {
+      observeQueue();
+      if (observedQueue) clearInterval(finder);
+    }, 1000);
   }
 })();

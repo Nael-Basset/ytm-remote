@@ -55,7 +55,9 @@ Choisissez votre navigateur ci-dessous :
    - 📱 **Télécommande Smartphone** : Affiche instantanément un QR Code.
 3. **Scannez le QR Code avec l'appareil photo de votre smartphone** :
    - L'application web mobile [https://nael-basset.github.io/ytm-remote/](https://nael-basset.github.io/ytm-remote/) s'ouvre automatiquement.
-   - Votre smartphone se connecte **en moins de 100 ms en direct (P2P)** à votre PC, sans aucun compte ni installation sur votre téléphone !
+   - **Autorisez l'appareil sur le PC** : une demande « Nouvelle télécommande » s'affiche dans l'onglet YouTube Music. Un appareil autorisé est mémorisé, il ne vous sera plus demandé.
+   - Votre smartphone se connecte alors en direct (P2P) à votre PC, sans aucun compte ni installation sur votre téléphone.
+4. Pour couper l'accès : bouton 📱 › **Déconnecter** à côté d'un appareil, ou **Nouveau lien** pour tout déconnecter et changer de QR Code.
 
 ---
 
@@ -63,14 +65,14 @@ Choisissez votre navigateur ci-dessous :
 
 | Fonctionnalité | Description |
 | :--- | :--- |
-| **📱 Télécommande WebRTC P2P** | Contrôlez la musique depuis votre canapé ou votre lit. Fonctionne en Wi-Fi local comme en 4G / 5G. |
+| **📱 Télécommande WebRTC P2P** | Contrôlez la musique depuis votre canapé ou votre lit. Fonctionne en Wi-Fi local, et en 4G / 5G selon l'opérateur (voir Limites). |
 | **👥 Multi-appareils en simultané** | Plusieurs smartphones ou tablettes peuvent être connectés en même temps pour gérer la musique à plusieurs. |
 | **🎤 Paroles Mot par Mot (BetterLyrics)** | Les mots s'illuminent au rythme exact où ils sont chantés (sans grossissement intempestif pour une lisibilité parfaite). Mode plein écran immersif inclus. |
 | **🎶 File d'attente complète ("À suivre")** | Affiche tous les morceaux à venir avec leurs pochettes d'album haute qualité (sans blocage après le 14ᵉ morceau). Cliquez sur n'importe quel titre pour le lancer. |
 | **🔁 Répétition à 3 États** | Basculez d'un clic entre **Désactivé (0)**, **Répéter toute la playlist (1)** et **Répéter le morceau en cours (2)**. |
 | **🎛️ Commandes complètes** | Lecture, Pause, Suivant, Précédent, Barre de progression fluide, Contrôle du volume, Like, Dislike, Mode Aléatoire (Shuffle). |
 | **⌨️ Raccourcis Clavier Globaux** | Contrôlez YouTube Music en jeu ou dans n'importe quel logiciel grâce aux touches de raccourci paramétrables. |
-| **🔒 100 % Respectueux de la vie privée** | Aucune donnée collectée, aucun compte requis, communication P2P chiffrée de bout en bout. |
+| **🔒 Respectueux de la vie privée** | Aucune donnée collectée par l'extension, aucun compte requis, communication P2P chiffrée (DTLS), chaque appareil doit être autorisé sur le PC. |
 
 ---
 
@@ -83,9 +85,32 @@ flowchart LR
     B <-->|"Négociation STUN (Initialisation)"| C
 ```
 
-1. **Extension PC** : Héberge un nœud WebRTC sécurisé directement dans l'onglet YouTube Music.
-2. **Web App Mobile** : Hébergée sur GitHub Pages, elle se connecte directement à votre PC via un canal de données sécurisé dès le scan du QR Code.
-3. **P2P direct** : Zéro latence, zéro intermédiaire, zéro serveur tiers.
+1. **Extension PC** : Héberge un nœud WebRTC directement dans l'onglet YouTube Music, avec un identifiant de salle aléatoire (96 bits).
+2. **Web App Mobile** : Hébergée sur GitHub Pages, elle se connecte à votre PC dès le scan du QR Code, puis attend votre autorisation sur le PC.
+3. **P2P direct** : une fois la connexion établie, les commandes passent directement entre le téléphone et le PC.
+
+### Services externes contactés
+
+| Service | Pourquoi |
+| :--- | :--- |
+| `0.peerjs.com` (serveur PeerJS public) | Mise en relation initiale du téléphone et du PC (signalisation) |
+| `stun.l.google.com` | Découverte de l'adresse réseau pour la connexion P2P |
+| `lrclib.net` | Paroles synchronisées (titre et artiste du morceau envoyés) |
+| `nael-basset.github.io` | Hébergement de la page mobile |
+
+Le QR Code est généré localement : l'identifiant de salle n'est envoyé à aucun service de QR Code.
+
+### Limites
+
+- **Pas de serveur relais (TURN)** : sur certains réseaux mobiles (CGNAT, NAT symétrique), la connexion P2P directe est impossible et la télécommande ne se connectera pas. Le Wi-Fi local fonctionne toujours.
+
+### Développement
+
+Le code source unique est dans `extension/` et `index.html`. Après toute modification, régénérez le build Firefox et les copies de la page mobile :
+
+```bash
+node tools/sync-builds.js
+```
 
 ---
 

@@ -3,7 +3,10 @@
 (function () {
   'use strict';
 
-  // Sécurisation globale de TextDecoder contre les chaînes ou types inattendus dans PeerJS
+  // Les messages P2P transitent en texte JSON brut sur le RTCDataChannel natif (le canal JSON de
+  // PeerJS refuse tout message > 16 Ko, or l'état avec la file d'attente dépasse souvent cette taille).
+  // PeerJS écoute le même canal et appelle TextDecoder.decode() sur ces chaînes : ce patch lui évite
+  // de lever une exception à chaque message.
   if (typeof TextDecoder !== 'undefined') {
     const origDecode = TextDecoder.prototype.decode;
     TextDecoder.prototype.decode = function (input, options) {
@@ -14,6 +17,79 @@
   }
 
   const browser = globalThis.browser || globalThis.chrome;
+
+  // ==========================================
+  // Assainissement des données (URL d'images, pistes reçues de la télécommande)
+  // ==========================================
+  // URL https normalisée (guillemets percent-encodés) : sûre dans src= et dans url("…") CSS
+  function safeHttpsUrl(u) {
+    try {
+      const url = new URL(String(u || ''));
+      return url.protocol === 'https:' ? url.href.replace(/"/g, '%22') : '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  // Vignettes venant de la télécommande : uniquement les domaines d'images de YouTube,
+  // pour qu'un appareil ne puisse pas faire charger une image arbitraire (pistage, fuite d'IP).
+  const THUMB_HOSTS = ['ytimg.com', 'ggpht.com', 'googleusercontent.com'];
+  function safeThumbUrl(u, videoId) {
+    const href = safeHttpsUrl(u);
+    if (href) {
+      const host = new URL(href).hostname;
+      if (THUMB_HOSTS.some(h => host === h || host.endsWith('.' + h))) return href;
+    }
+    return videoId ? `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` : '';
+  }
+
+  const VIDEO_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
+  function cleanText(v, max = 200) {
+    return typeof v === 'string' ? v.slice(0, max) : '';
+  }
+
+  // Piste reçue du réseau : on ne garde que des champs typés et bornés
+  function sanitizeTrack(v) {
+    const item = (typeof v === 'object' && v) ? v : { videoId: v };
+    const videoId = VIDEO_ID_RE.test(item.videoId) ? item.videoId : '';
+    const out = {
+      videoId,
+      title: cleanText(item.title),
+      artist: cleanText(item.artist),
+      duration: cleanText(item.duration, 12),
+      thumbnail: safeThumbUrl(item.thumbnail, videoId)
+    };
+    if (Number.isInteger(item.index) && item.index >= 0 && item.index < 5000) out.index = item.index;
+    return out;
+  }
+
+  const ALLOWED_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+  // Actions acceptées depuis la télécommande, avec validation de la valeur.
+  // Renvoie undefined si la commande doit être ignorée.
+  function sanitizeRemoteCommand(action, value) {
+    const num = (x, min, max) => (typeof x === 'number' && isFinite(x) ? Math.min(max, Math.max(min, x)) : undefined);
+    switch (action) {
+      case 'play': case 'pause': case 'play-pause': case 'next': case 'prev':
+      case 'mute-toggle': case 'like': case 'dislike': case 'toggle-shuffle': case 'toggle-repeat':
+        return { action, value: null };
+      case 'seek': { const v = num(value, 0, 100); return v === undefined ? undefined : { action, value: v }; }
+      case 'seek-relative': { const v = num(value, -600, 600); return v === undefined ? undefined : { action, value: v }; }
+      case 'seek-absolute': { const v = num(value, 0, 86400); return v === undefined ? undefined : { action, value: v }; }
+      case 'volume': { const v = num(value, 0, 100); return v === undefined ? undefined : { action, value: Math.round(v) }; }
+      case 'set-rate': return ALLOWED_RATES.includes(value) ? { action, value } : undefined;
+      case 'play-track': case 'queue-track': {
+        const t = sanitizeTrack(value);
+        return t.videoId ? { action, value: t } : undefined;
+      }
+      case 'play-queue-index': {
+        if (Number.isInteger(value)) return value >= 0 && value < 5000 ? { action, value } : undefined;
+        const t = sanitizeTrack(value);
+        return (t.videoId || t.index !== undefined) ? { action, value: t } : undefined;
+      }
+      default:
+        return undefined;
+    }
+  }
 
   // ==========================================
   // 1. Thème et Effet de Flou d'Arrière-Plan
@@ -159,8 +235,8 @@
 
   function updateBackgroundImage() {
     const albumArt = document.querySelector('#song-image img') || document.querySelector('.image.ytmusic-player-bar img');
-    if (albumArt && albumArt.src) {
-      const safe = albumArt.src.replace(/"/g, '%22').replace(/\)/g, '%29');
+    const safe = albumArt ? safeHttpsUrl(albumArt.src) : '';
+    if (safe) {
       document.documentElement.style.setProperty('--blyrics-background-img', `url("${safe}")`);
     }
   }
@@ -212,12 +288,8 @@
       const el = document.querySelector(sel);
       if (el) {
         const btn = el.shadowRoot?.querySelector('button') || el.querySelector('button') || el;
-        btn.dispatchEvent(new MouseEvent('click', {
-          bubbles: true,
-          cancelable: true,
-          composed: true,
-          view: window
-        }));
+        // Un seul clic : click() émet déjà un événement composé qui traverse le shadow DOM.
+        // (Envoyer aussi un MouseEvent faisait basculer like/shuffle/repeat deux fois.)
         try { btn.click(); } catch (e) {}
         return true;
       }
@@ -265,12 +337,13 @@
         }
       }
 
-      if (thumbnail) {
+      const safeThumb = safeHttpsUrl(thumbnail);
+      if (safeThumb) {
         const albumArtImgs = document.querySelectorAll('#song-image img, .image.ytmusic-player-bar img');
         albumArtImgs.forEach(img => {
-          img.src = thumbnail;
+          img.src = safeThumb;
         });
-        document.documentElement.style.setProperty('--blyrics-background-img', `url("${thumbnail}")`);
+        document.documentElement.style.setProperty('--blyrics-background-img', `url("${safeThumb}")`);
       }
 
       if (title) {
@@ -831,10 +904,40 @@
   // ==========================================
   // Télécommande Universelle WebRTC P2P (Room ID)
   // ==========================================
+  // ID de salle : 96 bits aléatoires cryptographiques (l'ancien format Math.random était devinable)
+  function newRoomId() {
+    const bytes = crypto.getRandomValues(new Uint8Array(12));
+    return 'ytm-' + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  }
   let ytmRoomId = sessionStorage.getItem('ytmp_p2p_room');
-  if (!ytmRoomId) {
-    ytmRoomId = 'ytm-' + Math.random().toString(36).substring(2, 8) + '-' + Date.now().toString(36).slice(-4);
+  if (!ytmRoomId || !/^ytm-[a-f0-9]{24}$/.test(ytmRoomId)) {
+    ytmRoomId = newRoomId();
     sessionStorage.setItem('ytmp_p2p_room', ytmRoomId);
+  }
+  function remoteUrl() {
+    return 'https://nael-basset.github.io/ytm-remote/#' + ytmRoomId;
+  }
+
+  // QR code généré localement (qrcode.min.js est chargé comme content script) :
+  // l'URL contient l'ID de salle et ne doit jamais partir chez un service tiers.
+  function renderQrCode(container, text, size) {
+    container.textContent = '';
+    if (typeof QRCode !== 'function') {
+      container.textContent = 'QR code indisponible : ouvrez le lien ci-dessous.';
+      return;
+    }
+    try {
+      new QRCode(container, {
+        text,
+        width: size,
+        height: size,
+        colorDark: '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    } catch (e) {
+      container.textContent = 'QR code indisponible : ouvrez le lien ci-dessous.';
+    }
   }
 
   // ==========================================
@@ -979,10 +1082,6 @@
     link.rel = 'stylesheet';
     link.href = browser.runtime.getURL('pip.css');
     doc.head.appendChild(link);
-
-    const qrScript = doc.createElement('script');
-    qrScript.src = browser.runtime.getURL('qrcode.min.js');
-    doc.head.appendChild(qrScript);
 
     doc.title = 'YouTube Music';
 
@@ -1280,26 +1379,9 @@
 
     // Gestion de la Télécommande Smartphone (QR Code)
     function showQrModal() {
-      const targetUrl = 'https://nael-basset.github.io/ytm-remote/#' + ytmRoomId;
+      const targetUrl = remoteUrl();
       pel.qrUrl.textContent = targetUrl;
-      pel.qrContainer.innerHTML = '';
-
-      if (typeof pipWin.QRCode === 'function') {
-        try {
-          new pipWin.QRCode(pel.qrContainer, {
-            text: targetUrl,
-            width: 140,
-            height: 140,
-            colorDark: '#000000',
-            colorLight: '#ffffff',
-            correctLevel: pipWin.QRCode.CorrectLevel.M
-          });
-        } catch (e) {
-          pel.qrContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(targetUrl)}" width="140" height="140" alt="QR Code">`;
-        }
-      } else {
-        pel.qrContainer.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(targetUrl)}" width="140" height="140" alt="QR Code">`;
-      }
+      renderQrCode(pel.qrContainer, targetUrl, 140);
       pel.qrModal.classList.remove('closed');
     }
 
@@ -1358,9 +1440,10 @@
       pel.title.textContent = info.title || 'YouTube Music';
       pel.artist.textContent = info.artist || '';
 
-      if (info.albumArt && pel.albumArt.src !== info.albumArt) {
-        pel.albumArt.src = info.albumArt;
-        pel.bgAmbient.style.backgroundImage = `url("${info.albumArt}")`;
+      const art = safeHttpsUrl(info.albumArt);
+      if (art && pel.albumArt.src !== art) {
+        pel.albumArt.src = art;
+        pel.bgAmbient.style.backgroundImage = `url("${art}")`;
       }
 
       pel.totalTime.textContent = formatTime(info.duration);
@@ -1685,43 +1768,83 @@
   // 4. Injection du Bouton PiP dans YouTube Music
   // ==========================================
   let pageQrModal = null;
+  const BTN_STYLE = 'background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-size: 11.5px; padding: 6px 10px; border-radius: 8px; cursor: pointer;';
+
+  function closePageQrModal() {
+    pageQrModal?.remove();
+    pageQrModal = null;
+  }
+
+  function refreshPageQrModal() {
+    if (!pageQrModal) return;
+    const targetUrl = remoteUrl();
+    renderQrCode(pageQrModal.querySelector('#ytmp-page-qr-box'), targetUrl, 160);
+    pageQrModal.querySelector('#ytmp-page-qr-url').textContent = targetUrl;
+
+    const list = pageQrModal.querySelector('#ytmp-page-devices');
+    list.textContent = '';
+    const approved = [...p2pClientInfo.entries()].filter(([, info]) => info.approved);
+    if (approved.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'color: rgba(255,255,255,0.5); font-size: 11.5px;';
+      empty.textContent = 'Aucun appareil connecté';
+      list.appendChild(empty);
+    }
+    for (const [conn, info] of approved) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; padding: 4px 0;';
+      const name = document.createElement('span');
+      name.textContent = '🟢 ' + info.name;
+      const kick = document.createElement('button');
+      kick.style.cssText = BTN_STYLE;
+      kick.textContent = 'Déconnecter';
+      kick.addEventListener('click', () => revokeClient(conn));
+      row.append(name, kick);
+      list.appendChild(row);
+    }
+  }
+
   function togglePageQrModal() {
     if (pageQrModal) {
-      pageQrModal.remove();
-      pageQrModal = null;
+      closePageQrModal();
       return;
     }
-
-    const targetUrl = 'https://nael-basset.github.io/ytm-remote/#' + ytmRoomId;
 
     pageQrModal = document.createElement('div');
     pageQrModal.id = 'ytmp-page-qr-modal';
     pageQrModal.style.cssText = 'position: fixed; inset: 0; z-index: 999999; background: rgba(10, 10, 14, 0.85); backdrop-filter: blur(20px); display: flex; align-items: center; justify-content: center;';
+    // Gabarit statique uniquement : toutes les données dynamiques passent par textContent
     pageQrModal.innerHTML = `
-      <div style="background: rgba(22, 24, 30, 0.98); border: 1px solid rgba(255,255,255,0.15); border-radius: 16px; padding: 22px; width: 300px; text-align: center; box-shadow: 0 16px 48px rgba(0,0,0,0.9); font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; color: #fff;">
+      <div style="background: rgba(22, 24, 30, 0.98); border: 1px solid rgba(255,255,255,0.15); border-radius: 16px; padding: 22px; width: 320px; text-align: center; box-shadow: 0 16px 48px rgba(0,0,0,0.9); font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; color: #fff;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
           <span style="font-size: 14px; font-weight: 700; display:flex; align-items:center; gap:6px;">📱 Télécommande Smartphone</span>
           <button id="ytmp-page-qr-close" style="background: rgba(255,255,255,0.1); border: none; color: #fff; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 13px;">✕</button>
         </div>
-        <div style="background: #fff; padding: 12px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
-          <img src="https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(targetUrl)}" width="160" height="160" alt="QR Code">
+        <div id="ytmp-page-qr-box" style="background: #fff; padding: 12px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.2); color: #000; font-size: 11px;"></div>
+        <div id="ytmp-page-qr-url" style="font-size: 12px; font-weight: 700; color: #ff0055; margin-top: 14px; font-family: monospace; word-break: break-all;"></div>
+        <div style="font-size: 11.5px; color: rgba(255,255,255,0.65); margin-top: 8px; line-height: 1.45;">Scannez ce QR Code avec votre téléphone. Chaque nouvel appareil doit être autorisé ici, sur le PC.</div>
+        <div style="text-align: left; margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
+          <div style="font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.6); margin-bottom: 6px;">APPAREILS CONNECTÉS</div>
+          <div id="ytmp-page-devices"></div>
         </div>
-        <div style="font-size: 12px; font-weight: 700; color: #ff0055; margin-top: 14px; font-family: monospace; word-break: break-all;">${targetUrl}</div>
-        <div style="font-size: 11.5px; color: rgba(255,255,255,0.65); margin-top: 8px; line-height: 1.45;">Scannez ce QR Code avec votre téléphone (compatible Wi-Fi, 4G, 5G) pour contrôler YouTube Music sans aucun logiciel à installer.</div>
+        <div style="display: flex; gap: 8px; justify-content: center; margin-top: 12px; flex-wrap: wrap;">
+          <button id="ytmp-page-new-link" style="${BTN_STYLE}">Nouveau lien</button>
+          <button id="ytmp-page-forget" style="${BTN_STYLE}">Oublier les appareils</button>
+        </div>
       </div>
     `;
 
     document.body.appendChild(pageQrModal);
-    pageQrModal.querySelector('#ytmp-page-qr-close').addEventListener('click', () => {
-      pageQrModal?.remove();
-      pageQrModal = null;
+    pageQrModal.querySelector('#ytmp-page-qr-close').addEventListener('click', closePageQrModal);
+    pageQrModal.querySelector('#ytmp-page-new-link').addEventListener('click', () => regenerateRoom());
+    pageQrModal.querySelector('#ytmp-page-forget').addEventListener('click', async () => {
+      await browser.storage.local.remove(TRUSTED_KEY);
+      regenerateRoom();
     });
     pageQrModal.addEventListener('click', (e) => {
-      if (e.target === pageQrModal) {
-        pageQrModal.remove();
-        pageQrModal = null;
-      }
+      if (e.target === pageQrModal) closePageQrModal();
     });
+    refreshPageQrModal();
   }
 
   function injectPipButton() {
@@ -1955,7 +2078,164 @@
   // 5b. Télécommande Universelle WebRTC P2P (Plug & Play, Zéro Python)
   // ==========================================
   let peerHost = null;
+  // Connexions dont l'appareil a été autorisé : seules elles reçoivent l'état et peuvent agir
   const connectedP2PClients = new Set();
+  // Toutes les connexions ouvertes : conn -> { name, deviceHash, approved, helloReceived }
+  const p2pClientInfo = new Map();
+  const TRUSTED_KEY = 'trustedRemoteDevices';
+  const MAX_PENDING = 3;
+
+  async function sha256Hex(str) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf), b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function getTrustedDevices() {
+    const data = await browser.storage.local.get(TRUSTED_KEY);
+    return data[TRUSTED_KEY] || {};
+  }
+
+  // Envoi unique en texte JSON sur le RTCDataChannel natif (voir le commentaire du patch TextDecoder)
+  function sendTo(conn, obj) {
+    const dc = conn.dataChannel;
+    if (dc && dc.readyState === 'open') {
+      try { dc.send(JSON.stringify(obj)); return true; } catch (e) { return false; }
+    }
+    return false;
+  }
+
+  function dropClient(conn) {
+    connectedP2PClients.delete(conn);
+    p2pClientInfo.delete(conn);
+    refreshPageQrModal();
+  }
+
+  function approveClient(conn) {
+    const info = p2pClientInfo.get(conn);
+    if (!info) return;
+    info.approved = true;
+    connectedP2PClients.add(conn);
+    sendTo(conn, { type: 'auth', status: 'approved' });
+    sendTo(conn, { type: 'state', data: getTrackInfo() });
+    refreshPageQrModal();
+  }
+
+  function denyClient(conn, status = 'denied') {
+    sendTo(conn, { type: 'auth', status });
+    // Laisser le temps au message de partir avant de fermer
+    setTimeout(() => { try { conn.close(); } catch (e) {} }, 300);
+    dropClient(conn);
+  }
+
+  // Déconnecte un appareil et l'oublie : il devra être réautorisé
+  async function revokeClient(conn) {
+    const info = p2pClientInfo.get(conn);
+    if (info?.deviceHash) {
+      const trusted = await getTrustedDevices();
+      delete trusted[info.deviceHash];
+      await browser.storage.local.set({ [TRUSTED_KEY]: trusted });
+    }
+    denyClient(conn, 'revoked');
+  }
+
+  // Nouveau lien : ferme toutes les connexions et change d'ID de salle
+  function regenerateRoom() {
+    for (const conn of [...p2pClientInfo.keys()]) denyClient(conn, 'revoked');
+    ytmRoomId = newRoomId();
+    sessionStorage.setItem('ytmp_p2p_room', ytmRoomId);
+    const old = peerHost;
+    peerHost = null;
+    try { old?.destroy(); } catch (e) {}
+    initWebRTCHost();
+    refreshPageQrModal();
+  }
+
+  // Demande d'autorisation affichée sur la page YouTube Music (et dans le PiP s'il est ouvert)
+  function askApproval(deviceName) {
+    return new Promise((resolve) => {
+      const toasts = [];
+      let done = false;
+      const finish = (ok) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        toasts.forEach(t => t.remove());
+        resolve(ok);
+      };
+      const timer = setTimeout(() => finish(false), 60000);
+
+      const docs = [document];
+      if (activePipWindow && !activePipWindow.closed) docs.push(activePipWindow.document);
+      for (const doc of docs) {
+        const toast = doc.createElement('div');
+        toast.style.cssText = 'position: fixed; right: 16px; bottom: 96px; z-index: 1000000; width: 260px; background: rgba(22,24,30,0.98); border: 1px solid rgba(255,255,255,0.2); border-radius: 12px; padding: 14px; color: #fff; font: 13px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; box-shadow: 0 12px 36px rgba(0,0,0,0.8);';
+        const title = doc.createElement('div');
+        title.style.cssText = 'font-weight: 700; margin-bottom: 6px;';
+        title.textContent = '📱 Nouvelle télécommande';
+        const msg = doc.createElement('div');
+        msg.style.cssText = 'color: rgba(255,255,255,0.75); margin-bottom: 10px; line-height: 1.4;';
+        msg.textContent = `« ${deviceName} » veut contrôler YouTube Music. Autoriser cet appareil ?`;
+        const row = doc.createElement('div');
+        row.style.cssText = 'display: flex; gap: 8px; justify-content: flex-end;';
+        const no = doc.createElement('button');
+        no.style.cssText = BTN_STYLE;
+        no.textContent = 'Refuser';
+        no.addEventListener('click', () => finish(false));
+        const yes = doc.createElement('button');
+        yes.style.cssText = BTN_STYLE + ' background: #ff0055; border-color: #ff0055; font-weight: 700;';
+        yes.textContent = 'Autoriser';
+        yes.addEventListener('click', () => finish(true));
+        row.append(no, yes);
+        toast.append(title, msg, row);
+        doc.body.appendChild(toast);
+        toasts.push(toast);
+      }
+
+      browser.runtime.sendMessage({
+        action: 'show-notification',
+        title: 'Nouvelle télécommande',
+        message: `« ${deviceName} » demande l'accès. Validez dans l'onglet YouTube Music.`
+      }).catch(() => {});
+    });
+  }
+
+  async function handleHello(conn, payload) {
+    const info = p2pClientInfo.get(conn);
+    if (!info || info.helloReceived) return;
+    info.helloReceived = true;
+    clearTimeout(info.helloTimer);
+
+    if (typeof payload.deviceId !== 'string' || !/^[a-f0-9]{32}$/.test(payload.deviceId)) {
+      denyClient(conn);
+      return;
+    }
+    info.name = cleanText(payload.deviceName, 40) || 'Appareil inconnu';
+    info.deviceHash = await sha256Hex(payload.deviceId);
+
+    const trusted = await getTrustedDevices();
+    if (trusted[info.deviceHash]) {
+      approveClient(conn);
+      return;
+    }
+
+    const pending = [...p2pClientInfo.values()].filter(i => i.awaitingApproval).length;
+    if (pending >= MAX_PENDING) {
+      denyClient(conn);
+      return;
+    }
+    info.awaitingApproval = true;
+    sendTo(conn, { type: 'auth', status: 'pending' });
+    const ok = await askApproval(info.name);
+    info.awaitingApproval = false;
+    if (!p2pClientInfo.has(conn)) return; // fermé entre-temps
+    if (!ok) {
+      denyClient(conn);
+      return;
+    }
+    trusted[info.deviceHash] = { name: info.name, addedAt: Date.now() };
+    await browser.storage.local.set({ [TRUSTED_KEY]: trusted });
+    approveClient(conn);
+  }
 
   function initWebRTCHost() {
     if (peerHost && !peerHost.destroyed) return;
@@ -1966,7 +2246,7 @@
         return;
       }
 
-      peerHost = new PeerClass(ytmRoomId, {
+      const host = new PeerClass(ytmRoomId, {
         debug: 0,
         config: {
           iceServers: [
@@ -1975,82 +2255,49 @@
           ]
         }
       });
+      peerHost = host;
 
-      peerHost.on('open', (id) => {
-        ytmRoomId = id;
-        sessionStorage.setItem('ytmp_p2p_room', id);
-      });
-
-      peerHost.on('connection', (conn) => {
+      host.on('connection', (conn) => {
         try { conn.serialization = 'json'; } catch (e) {}
-
-        const handledMsgKeys = new Set();
+        const info = { name: 'Appareil inconnu', deviceHash: '', approved: false, helloReceived: false, awaitingApproval: false };
+        p2pClientInfo.set(conn, info);
 
         async function processIncomingPayload(raw) {
           if (!raw) return;
           let payload = raw;
           if (typeof payload === 'string') {
-            try { payload = JSON.parse(payload); } catch (e) {}
+            try { payload = JSON.parse(payload); } catch (e) { return; }
           }
           if (typeof payload !== 'object' || !payload) return;
 
-          // Déduplication (si délivré à la fois par PeerJS et par le dataChannel natif)
-          const msgKey = payload.msgId || (payload.action + '_' + JSON.stringify(payload.value ?? '') + '_' + Math.floor(Date.now() / 250));
-          if (handledMsgKeys.has(msgKey)) return;
-          handledMsgKeys.add(msgKey);
-          if (handledMsgKeys.size > 100) {
-            const first = handledMsgKeys.values().next().value;
-            handledMsgKeys.delete(first);
+          if (payload.type === 'hello') {
+            handleHello(conn, payload);
+            return;
           }
+          // Rien n'est accepté tant que l'appareil n'a pas été autorisé sur le PC
+          if (!info.approved) return;
 
           if (payload.action === 'search') {
-            const query = (payload.query || payload.value || '').trim();
-            const reqId = payload.requestId || Math.random().toString(36).substring(2);
-            if (!query) {
-              const resEmpty = { type: 'search-results', requestId: reqId, query: '', results: [] };
-              try { conn.send(resEmpty); } catch (e) {}
-              try { if (conn.dataChannel?.readyState === 'open') conn.dataChannel.send(JSON.stringify(resEmpty)); } catch (e) {}
-              return;
-            }
-
-            try {
-              const results = await searchYouTubeMusic(query);
-              const resData = { type: 'search-results', requestId: reqId, query: query, results: results };
-              try { conn.send(resData); } catch (e) {}
-              try { if (conn.dataChannel?.readyState === 'open') conn.dataChannel.send(JSON.stringify(resData)); } catch (e) {}
-            } catch (err) {
-              console.warn('[YTM Remote] Search failed:', err);
-              const resFail = { type: 'search-results', requestId: reqId, query: query, results: [] };
-              try { conn.send(resFail); } catch (e) {}
-              try { if (conn.dataChannel?.readyState === 'open') conn.dataChannel.send(JSON.stringify(resFail)); } catch (e) {}
-            }
+            const query = cleanText(payload.query || payload.value, 150).trim();
+            const reqId = cleanText(payload.requestId, 64);
+            const results = query ? await searchYouTubeMusic(query).catch(() => []) : [];
+            sendTo(conn, { type: 'search-results', requestId: reqId, query, results });
             return;
           }
 
-          if (payload.action) {
-            let diagInfo = `Action "${payload.action}"`;
-            try {
-              callPlayerAction(payload.action, payload.value);
-              const vid = document.querySelector('video');
-              const mp = document.getElementById('movie_player');
-              diagInfo += ` reçue et exécutée (video=${!!vid}, paused=${vid ? vid.paused : 'N/A'}, mp=${!!mp})`;
-            } catch (err) {
-              diagInfo += ` -> ERREUR: ${err.message}`;
-            }
-
-            const diagMsg = { type: 'diag-log', message: diagInfo };
-            try { conn.send(diagMsg); } catch (e) {}
-            try {
-              if (conn.dataChannel && conn.dataChannel.readyState === 'open') {
-                conn.dataChannel.send(JSON.stringify(diagMsg));
-              }
-            } catch (e) {}
-
-            setTimeout(broadcastP2PState, 60);
+          const cmd = sanitizeRemoteCommand(payload.action, payload.value);
+          if (!cmd) return;
+          try {
+            callPlayerAction(cmd.action, cmd.value);
+            sendTo(conn, { type: 'diag-log', message: `Action "${cmd.action}" exécutée` });
+          } catch (err) {
+            sendTo(conn, { type: 'diag-log', message: `Action "${cmd.action}" : erreur` });
           }
+          setTimeout(broadcastP2PState, 60);
         }
 
-        // Écoute directe sur le DataChannel RTC natif (contourne le bug Firefox Blob/ArrayBuffer de PeerJS)
+        // Écoute unique sur le DataChannel natif (pas de handler conn.on('data'),
+        // sinon chaque message serait traité deux fois).
         function bindNativeChannel(dc) {
           if (!dc || dc._ytmBound) return;
           dc._ytmBound = true;
@@ -2067,49 +2314,37 @@
           });
         }
 
-        if (conn.dataChannel) {
-          bindNativeChannel(conn.dataChannel);
-        }
+        if (conn.dataChannel) bindNativeChannel(conn.dataChannel);
 
         conn.on('open', () => {
-          connectedP2PClients.add(conn);
           if (conn.dataChannel) bindNativeChannel(conn.dataChannel);
-          try {
-            conn.send({ type: 'state', data: getTrackInfo() });
-          } catch (e) {}
-          try {
-            if (conn.dataChannel && conn.dataChannel.readyState === 'open') {
-              conn.dataChannel.send(JSON.stringify({ type: 'state', data: getTrackInfo() }));
-            }
-          } catch (e) {}
+          // Sans « hello » valide sous 10 s, la connexion est fermée
+          info.helloTimer = setTimeout(() => {
+            if (!info.helloReceived) denyClient(conn);
+          }, 10000);
         });
 
-        conn.on('data', (rawPayload) => {
-          processIncomingPayload(rawPayload);
-        });
-
-        conn.on('close', () => {
-          connectedP2PClients.delete(conn);
-        });
-
-        conn.on('error', () => {
-          connectedP2PClients.delete(conn);
-        });
+        conn.on('close', () => dropClient(conn));
+        conn.on('error', () => dropClient(conn));
       });
 
-      peerHost.on('error', (err) => {
+      host.on('error', (err) => {
+        if (peerHost !== host) return;
         if (err && err.type === 'unavailable-id') {
-          ytmRoomId = 'ytm-' + Math.random().toString(36).substring(2, 8) + '-' + Date.now().toString(36).slice(-4);
+          ytmRoomId = newRoomId();
           sessionStorage.setItem('ytmp_p2p_room', ytmRoomId);
+          peerHost = null;
+          try { host.destroy(); } catch (e) {}
           setTimeout(initWebRTCHost, 1000);
-        } else if (peerHost.disconnected && !peerHost.destroyed) {
-          peerHost.reconnect();
+          refreshPageQrModal();
+        } else if (host.disconnected && !host.destroyed) {
+          host.reconnect();
         }
       });
 
-      peerHost.on('disconnected', () => {
-        if (!peerHost.destroyed) {
-          peerHost.reconnect();
+      host.on('disconnected', () => {
+        if (peerHost === host && !host.destroyed) {
+          host.reconnect();
         }
       });
     } catch (e) {
@@ -2121,22 +2356,9 @@
   function broadcastP2PState() {
     if (!connectedP2PClients.size) return;
     try {
-      const state = getTrackInfo();
-      const payload = { type: 'state', data: state };
-      const jsonStr = JSON.stringify(payload);
+      const payload = { type: 'state', data: getTrackInfo() };
       for (const client of connectedP2PClients) {
-        if (client.open) {
-          try {
-            client.send(payload);
-          } catch (e) {
-            connectedP2PClients.delete(client);
-          }
-          try {
-            if (client.dataChannel && client.dataChannel.readyState === 'open') {
-              client.dataChannel.send(jsonStr);
-            }
-          } catch (e) {}
-        }
+        if (!sendTo(client, payload) && !client.open) dropClient(client);
       }
     } catch (e) {}
   }
@@ -2223,6 +2445,9 @@
       default:
         break;
     }
-    return true;
+    // Toutes les réponses sont synchrones : on répond toujours (un 2e appel est ignoré) et on ne
+    // garde pas le canal ouvert, sinon l'appelant reçoit « message channel closed ».
+    try { sendResponse({ ok: true }); } catch (e) {}
+    return false;
   });
 })();

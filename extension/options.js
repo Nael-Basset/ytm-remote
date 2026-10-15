@@ -18,8 +18,8 @@ const COMMAND_LABELS = {
   'next-track': 'Morceau suivant',
   'previous-track': 'Morceau précédent',
   'toggle-pip': 'Mini-Lecteur PiP Always on Top (Au-dessus de toute app)',
-  'volume-up': 'Augmenter le volume (+5%)',
-  'volume-down': 'Diminuer le volume (-5%)',
+  'volume-up': 'Augmenter le volume (+10%)',
+  'volume-down': 'Diminuer le volume (-10%)',
   'mute-toggle': 'Couper / Rétablir le son',
   'toggle-shuffle': 'Lecture aléatoire',
   'toggle-repeat': 'Répétition (Désactivé / Playlist / Titre)',
@@ -105,11 +105,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Bouton vers chrome://extensions/shortcuts
+  // Page de réglage des raccourcis : API dédiée sous Firefox, page interne sous Chromium
   const openShortcutsBtn = document.getElementById('open-shortcuts-btn');
   if (openShortcutsBtn) {
     openShortcutsBtn.addEventListener('click', () => {
-      browser.tabs.create({ url: 'chrome://extensions/shortcuts' });
+      if (browser.commands && typeof browser.commands.openShortcutSettings === 'function') {
+        browser.commands.openShortcutSettings();
+      } else if (browser.runtime.getBrowserInfo) {
+        // Firefox ancien : pas d'accès programmatique à about:addons
+        alert('Ouvrez about:addons, roue dentée ⚙ › « Gérer les raccourcis d\'extensions ».');
+      } else {
+        browser.tabs.create({ url: 'chrome://extensions/shortcuts' });
+      }
     });
   }
 
