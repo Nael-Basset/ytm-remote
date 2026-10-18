@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extensionName__",
-  "version": "1.13.0",
+  "version": "1.13.1",
   "description": "__MSG_extensionDescription__",
   "default_locale": "en",
   "icons": {
@@ -40,14 +40,23 @@
         "content-script.js"
       ],
       "run_at": "document_end"
+    },
+    {
+      "matches": [
+        "*://music.youtube.com/*"
+      ],
+      "js": [
+        "queue-bridge.js"
+      ],
+      "run_at": "document_end",
+      "world": "MAIN"
     }
   ],
   "web_accessible_resources": [
     {
       "resources": [
         "icons/icon128.png",
-        "pip.css",
-        "queue-bridge.js"
+        "pip.css"
       ],
       "matches": [
         "*://music.youtube.com/*"

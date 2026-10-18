@@ -3,6 +3,9 @@
 (function () {
   'use strict';
 
+  // Présence du pont, lue par content-script.js avant de lui déléguer le contrôle du lecteur
+  document.documentElement.setAttribute('data-ytm-bridge', '1');
+
   try {
     const oldTag = document.getElementById('ytm-queue-cache-data');
     if (oldTag) oldTag.remove();

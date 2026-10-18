@@ -33,7 +33,7 @@ copyDir(SRC, FIREFOX, ['manifest.json']);
 const manifest = JSON.parse(fs.readFileSync(path.join(SRC, 'manifest.json'), 'utf8'));
 manifest.background = { scripts: ['background.js'] };
 manifest.browser_specific_settings = {
-  gecko: { id: 'youtube-music-player@nael.com', strict_min_version: '109.0' }
+  gecko: { id: 'youtube-music-player@nael.com', strict_min_version: '128.0' }
 };
 fs.writeFileSync(path.join(FIREFOX, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 

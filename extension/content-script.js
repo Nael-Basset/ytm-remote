@@ -307,23 +307,13 @@
     }
   });
 
-  // ==========================================
-  // Injection du Pont Main-World (Queue & Vignettes 100%)
-  // ==========================================
-  function injectQueueBridge() {
-    if (document.getElementById('ytm-queue-bridge-script')) return;
-    try {
-      const script = document.createElement('script');
-      script.id = 'ytm-queue-bridge-script';
-      script.src = browser.runtime.getURL('queue-bridge.js');
-      script.async = false;
-      (document.head || document.documentElement).appendChild(script);
-    } catch (e) {
-      console.warn('[YTM Player] Impossible d\'injecter queue-bridge:', e);
-    }
+  // queue-bridge.js est déclaré dans le manifest comme content script du monde de la page
+  // ("world": "MAIN") : plus d'injection par balise <script src="chrome-extension://…">, qui
+  // échouait si le navigateur refusait momentanément l'accès à la ressource.
+  // Il signale sa présence par l'attribut data-ytm-bridge sur <html>.
+  function bridgeReady() {
+    return document.documentElement.getAttribute('data-ytm-bridge') === '1';
   }
-  injectQueueBridge();
-  document.addEventListener('DOMContentLoaded', injectQueueBridge);
 
   // ==========================================
   // 2. Contrôle de YouTube Music (DOM & Fallbacks)
@@ -400,7 +390,8 @@
   // Pont page pour playerApi si accessible
   function callPlayerAction(action, value) {
     const video = document.querySelector('video');
-    const hasMoviePlayer = !!document.getElementById('movie_player');
+    // Le pont pilote movie_player directement ; sans lui, on passe par les boutons de la page
+    const hasMoviePlayer = bridgeReady() && !!document.getElementById('movie_player');
 
     // 1. Toujours notifier le MAIN-world (queue-bridge) qui a accès direct à movie_player sans restriction Firefox
     try {
