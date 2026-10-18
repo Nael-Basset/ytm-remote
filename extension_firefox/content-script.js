@@ -349,44 +349,6 @@
     }
   });
 
-  const queuedNextTracks = [];
-  let currentTrackOverride = null;
-
-  function updateDOMPlayerBar(title, artist, thumbnail) {
-    try {
-      const playerBar = document.querySelector('ytmusic-player-bar');
-      if (playerBar) {
-        if (title) {
-          const titleEls = playerBar.querySelectorAll('.title.ytmusic-player-bar, .title');
-          titleEls.forEach(el => {
-            el.textContent = title;
-            el.setAttribute('title', title);
-          });
-        }
-        if (artist) {
-          const artistEls = playerBar.querySelectorAll('.subtitle.ytmusic-player-bar yt-formatted-string, .byline.ytmusic-player-bar, .subtitle yt-formatted-string');
-          artistEls.forEach(el => {
-            el.textContent = artist;
-            el.setAttribute('title', artist);
-          });
-        }
-      }
-
-      const safeThumb = safeHttpsUrl(thumbnail);
-      if (safeThumb) {
-        const albumArtImgs = document.querySelectorAll('#song-image img, .image.ytmusic-player-bar img');
-        albumArtImgs.forEach(img => {
-          img.src = safeThumb;
-        });
-        document.documentElement.style.setProperty('--blyrics-background-img', `url("${safeThumb}")`);
-      }
-
-      if (title) {
-        document.title = artist ? `${title} • ${artist} - YouTube Music` : `${title} - YouTube Music`;
-      }
-    } catch (e) {}
-  }
-
   // Pont page pour playerApi si accessible
   function callPlayerAction(action, value) {
     const video = document.querySelector('video');
@@ -399,21 +361,11 @@
     } catch (e) {}
 
     // Si movie_player existe, queue-bridge le contrôle de manière native et fiable (évite les conflits d'inversion)
-    if (hasMoviePlayer && ['play', 'pause', 'play-pause', 'next', 'prev', 'seek', 'volume', 'mute-toggle', 'play-track'].includes(action)) {
-      if (action === 'play-track') {
-        const item = (typeof value === 'object' && value) ? value : { videoId: value };
-        if (item.title) {
-          currentTrackOverride = {
-            videoId: item.videoId || '',
-            title: item.title,
-            artist: item.artist || '',
-            thumbnail: item.thumbnail || (item.videoId ? `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg` : ''),
-            timestamp: Date.now()
-          };
-          updateDOMPlayerBar(item.title, item.artist, item.thumbnail);
-        }
-        setTimeout(broadcastP2PState, 100);
+    // play-track et play-queue-index passent par la navigation native de YouTube Music (dans le pont)
+    if (hasMoviePlayer && ['play', 'pause', 'play-pause', 'next', 'prev', 'seek', 'volume', 'mute-toggle', 'play-track', 'play-queue-index'].includes(action)) {
+      if (action === 'play-track' || action === 'play-queue-index') {
         setTimeout(broadcastP2PState, 500);
+        setTimeout(broadcastP2PState, 1500);
       }
       return;
     }
@@ -515,16 +467,8 @@
         }
         break;
       case 'play-queue-index': {
-        const fullQueue = readUpcomingQueue();
+        // Sans le pont : clic sur l'élément de la file dans la page
         const rawIdx = (typeof value === 'object' && value) ? value.index : value;
-        const targetItem = (typeof value === 'object' && value && value.videoId) ? value : (fullQueue && fullQueue[rawIdx]);
-        if (targetItem && targetItem.videoId) {
-          callPlayerAction('play-track', targetItem);
-          break;
-        }
-        try {
-          window.dispatchEvent(new CustomEvent('ytm-play-index', { detail: rawIdx }));
-        } catch (e) {}
         const queueItems = Array.from(document.querySelectorAll('ytmusic-player-queue-item'));
         if (queueItems && queueItems[rawIdx]) {
           const target = queueItems[rawIdx];
@@ -543,15 +487,6 @@
         const item = (typeof value === 'object' && value) ? value : { videoId: value };
         const vId = item.videoId;
         if (vId) {
-          if (item.title) {
-            currentTrackOverride = {
-              videoId: vId,
-              title: item.title,
-              artist: item.artist || '',
-              thumbnail: item.thumbnail || `https://i.ytimg.com/vi/${vId}/mqdefault.jpg`,
-              timestamp: Date.now()
-            };
-          }
           window.dispatchEvent(new CustomEvent('ytm-play-track', { detail: vId }));
           broadcastP2PState();
           setTimeout(broadcastP2PState, 150);
@@ -563,15 +498,9 @@
       case 'queue-track': {
         const vId = typeof value === 'string' ? value : value?.videoId;
         if (vId) {
-          const item = typeof value === 'object' ? value : { videoId: vId };
-          queuedNextTracks.push({
-            videoId: vId,
-            title: item.title || 'Titre',
-            artist: item.artist || '',
-            duration: item.duration || '',
-            thumbnail: item.thumbnail || `https://i.ytimg.com/vi/${vId}/mqdefault.jpg`
-          });
-          window.dispatchEvent(new CustomEvent('ytm-queue-track', { detail: value }));
+          // Le pont ajoute le morceau à la vraie file de YouTube Music ; l'état diffusé ensuite
+          // la reflète telle quelle, sans entrée simulée côté extension.
+          window.dispatchEvent(new CustomEvent('ytm-queue-track', { detail: vId }));
           setTimeout(broadcastP2PState, 150);
           setTimeout(broadcastP2PState, 500);
           setTimeout(broadcastP2PState, 1200);
@@ -675,19 +604,14 @@
   }
 
   function readTrackMeta() {
-    // 1. Priorité aux métadonnées forcées récentes lors du lancement d'un titre depuis la télécommande
-    if (currentTrackOverride && (Date.now() - currentTrackOverride.timestamp < 10000) && currentTrackOverride.title) {
-      return { title: currentTrackOverride.title, artist: currentTrackOverride.artist || '' };
-    }
-
-    // 2. Attributs synchronisés depuis movie_player.getVideoData() (temps réel natif)
+    // 1. Attributs synchronisés depuis movie_player.getVideoData() (temps réel natif)
     const syncTitle = document.documentElement.getAttribute('data-ytm-current-title');
     const syncArtist = document.documentElement.getAttribute('data-ytm-current-artist');
     if (syncTitle) {
       return { title: syncTitle, artist: syncArtist || '' };
     }
 
-    // 3. MediaSession API native
+    // 2. MediaSession API native
     if (navigator.mediaSession?.metadata?.title) {
       return {
         title: navigator.mediaSession.metadata.title,
@@ -695,7 +619,7 @@
       };
     }
 
-    // 4. ytmusic-player-bar DOM
+    // 3. ytmusic-player-bar DOM
     const playerBar = document.querySelector('ytmusic-player-bar');
     let title = '', artist = '';
     if (playerBar) {
@@ -779,38 +703,6 @@
     return '';
   }
 
-  function mergeQueuedIntoList(baseList) {
-    if (!Array.isArray(baseList) || baseList.length === 0) {
-      if (queuedNextTracks.length > 0) {
-        return queuedNextTracks.map((it, idx) => ({ ...it, index: idx, isCurrent: false }));
-      }
-      return [];
-    }
-    if (queuedNextTracks.length === 0) return baseList;
-
-    const existingVideoIds = new Set(baseList.map(it => it.videoId).filter(Boolean));
-    const pendingToInsert = queuedNextTracks.filter(it => !existingVideoIds.has(it.videoId));
-    if (pendingToInsert.length === 0) return baseList;
-
-    let curIdx = baseList.findIndex(it => it.isCurrent);
-    const insertIdx = (curIdx !== -1) ? curIdx + 1 : baseList.length;
-
-    const result = baseList.map(it => ({ ...it }));
-    const itemsToInsert = pendingToInsert.map(it => ({
-      videoId: it.videoId,
-      title: it.title || 'Titre',
-      artist: it.artist || '',
-      duration: it.duration || '',
-      thumbnail: it.thumbnail || `https://i.ytimg.com/vi/${it.videoId}/mqdefault.jpg`,
-      isCurrent: false,
-      isQueuedNext: true
-    }));
-
-    result.splice(insertIdx, 0, ...itemsToInsert);
-    result.forEach((item, idx) => { item.index = idx; });
-    return result;
-  }
-
   function readUpcomingQueue() {
     // 1. Priorité aux données synchronisées en mémoire depuis queue-bridge.js
     if (Array.isArray(latestSyncedQueue) && latestSyncedQueue.length > 0) {
@@ -830,7 +722,7 @@
           it.isCurrent = (idx === selectedIdx);
         });
       }
-      return mergeQueuedIntoList(listCopy);
+      return listCopy;
     }
 
     // 2. Fallback lecture du DOM
@@ -861,7 +753,7 @@
           });
         }
       });
-      return mergeQueuedIntoList(list);
+      return list;
     }
 
     const playlistItems = Array.from(document.querySelectorAll('ytmusic-responsive-list-item-renderer'));
@@ -889,10 +781,10 @@
           });
         }
       });
-      return mergeQueuedIntoList(list);
+      return list;
     }
 
-    return mergeQueuedIntoList([]);
+    return [];
   }
 
   function getTrackInfo() {
@@ -900,9 +792,6 @@
     const { title, artist } = readTrackMeta();
 
     let albumArt = '';
-    if (currentTrackOverride && (Date.now() - currentTrackOverride.timestamp < 10000) && currentTrackOverride.thumbnail) {
-      albumArt = currentTrackOverride.thumbnail;
-    }
     if (!albumArt && navigator.mediaSession?.metadata?.artwork?.length) {
       const artworks = navigator.mediaSession.metadata.artwork;
       albumArt = artworks[artworks.length - 1].src;
