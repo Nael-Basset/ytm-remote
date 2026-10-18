@@ -1226,6 +1226,8 @@
     function setAuthStatus(status) {
       authStatus = status;
       if (status === 'approved') {
+        // Recharger les paroles du morceau en cours dès l'autorisation
+        if (typeof lastLyricsTrackKey !== 'undefined') lastLyricsTrackKey = '';
         el.connDot.className = 'status-dot connected';
         el.connText.textContent = 'Connecté en direct à votre PC';
         addLog('AUTH', 'Appareil autorisé par le PC', '#00e676');
@@ -1288,6 +1290,8 @@
             addLog('REÇU', `State: [${s.isPlaying ? '▶ EN LECTURE' : '⏸ EN PAUSE'}] "${s.title}" (${s.artist})`, '#b388ff');
           }
           applyState(payload.data);
+        } else if (payload.type === 'lyrics') {
+          applyLyricsResponse(payload);
         } else if (payload.type === 'search-results') {
           addLog('REÇU', `Recherche: ${payload.results?.length || 0} résultats pour "${payload.query}"`, '#00e5ff');
           renderSearchResults(payload.results, payload.query);
@@ -1625,95 +1629,58 @@
       }
     });
 
-    async function fetchLyrics(rawTitle, rawArtist, duration) {
-      if (!rawTitle || rawTitle.includes('En attente') || rawTitle.includes('connexion')) {
-        el.lyricsStatus.textContent = 'En attente d\'un morceau…';
-        el.lyricsStatus.hidden = false;
-        el.lyricsList.innerHTML = '';
-        return;
-      }
+    // Les paroles sont recherchées par le PC (une seule fois par morceau, avec cache) :
+    // on les lui demande et on ignore toute réponse qui ne concerne plus le morceau en cours.
+    let pendingLyricsReq = '';
+    let lastPcTrackKey = '';
+    let lyricsRetries = 0;
 
-      el.lyricsStatus.textContent = 'Chargement des paroles…';
-      el.lyricsStatus.hidden = false;
+    function fetchLyrics(rawTitle) {
       el.lyricsList.innerHTML = '';
       lyricsLines = [];
       currentActiveLyricIndex = -1;
-
-      try {
-        const rawT = rawTitle.replace(/\s*[\(\[][^\)\]]*(official|clip|video|audio|remaster|visualizer|live|prod\.|feat\.?|ft\.?)[^\)\]]*[\)\]]/gi, '').trim();
-        const rawA = rawArtist.split(/\s*[•·]\s*/)[0].replace(/\s*[\(\[]?\s*(feat\.?|ft\.?)\b[^\)\]]*[\)\]]?/gi, '').trim();
-
-        let cleanT = rawT;
-        let cleanA = rawA;
-        if (rawT.includes(' - ')) {
-          const parts = rawT.split(' - ');
-          if (parts.length === 2) {
-            if (!rawA || rawA.toLowerCase() === parts[0].trim().toLowerCase() || parts[0].trim().toLowerCase().includes(rawA.toLowerCase())) {
-              cleanA = parts[0].trim();
-              cleanT = parts[1].trim();
-            }
-          }
-        }
-
-        let data = null;
-
-        // 1. Essai avec durée précise
-        try {
-          let r = await fetch('https://lrclib.net/api/get?track_name=' + encodeURIComponent(cleanT) + '&artist_name=' + encodeURIComponent(cleanA) + '&duration=' + Math.round(duration || 0));
-          if (r.ok) data = await r.json();
-        } catch (e) {}
-
-        // 2. Essai sans contrainte de durée
-        if (!data || !data.syncedLyrics) {
-          try {
-            let r2 = await fetch('https://lrclib.net/api/get?track_name=' + encodeURIComponent(cleanT) + '&artist_name=' + encodeURIComponent(cleanA));
-            if (r2.ok) {
-              const d2 = await r2.json();
-              if (d2 && d2.syncedLyrics) data = d2;
-            }
-          } catch (e) {}
-        }
-
-        // 3. Recherche large et sélection du candidat avec les paroles synchronisées le plus proche de la durée réelle
-        if (!data || !data.syncedLyrics) {
-          try {
-            let rSearch = await fetch('https://lrclib.net/api/search?q=' + encodeURIComponent(cleanT + ' ' + cleanA));
-            if (rSearch.ok) {
-              const j = await rSearch.json();
-              if (Array.isArray(j) && j.length > 0) {
-                const synced = j.filter(x => x && x.syncedLyrics);
-                if (synced.length > 0) {
-                  synced.sort((a, b) => {
-                    const diffA = Math.abs((a.duration || 0) - (duration || 0));
-                    const diffB = Math.abs((b.duration || 0) - (duration || 0));
-                    return diffA - diffB;
-                  });
-                  data = synced[0];
-                } else if (!data) {
-                  data = j[0];
-                }
-              }
-            }
-          } catch (e) {}
-        }
-
-        if (data && data.syncedLyrics) {
-          lyricsLines = parseLrc(data.syncedLyrics);
-        } else if (data && data.plainLyrics) {
-          lyricsLines = data.plainLyrics.split('\n').map((line, idx) => ({ time: -1, text: line.trim() }));
-        }
-
-        if (lyricsLines.length === 0) {
-          el.lyricsStatus.textContent = 'Aucune parole trouvée pour ce morceau.';
-          el.lyricsStatus.hidden = false;
-        } else {
-          el.lyricsStatus.hidden = true;
-          prepareLyricsWords();
-          renderLyrics();
-        }
-      } catch (err) {
-        el.lyricsStatus.textContent = 'Impossible de charger les paroles.';
+      if (!rawTitle || rawTitle.includes('En attente') || rawTitle.includes('connexion')) {
+        el.lyricsStatus.textContent = 'En attente d\'un morceau…';
         el.lyricsStatus.hidden = false;
+        return;
+      }
+      el.lyricsStatus.textContent = 'Chargement des paroles…';
+      el.lyricsStatus.hidden = false;
+      lyricsRetries = 0;
+      requestLyrics();
+    }
+
+    function requestLyrics() {
+      pendingLyricsReq = 'lyr-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+      if (!sendP2PMessage({ action: 'get-lyrics', requestId: pendingLyricsReq })) {
+        el.lyricsStatus.textContent = 'Connexion au PC nécessaire pour les paroles.';
+      }
+    }
+
+    function applyLyricsResponse(payload) {
+      if (!payload || payload.requestId !== pendingLyricsReq) return;
+      pendingLyricsReq = '';
+      // Le PC n'est pas encore passé au morceau affiché ici : on redemande un peu plus tard
+      if (lastPcTrackKey && payload.key && payload.key !== lastPcTrackKey && lyricsRetries < 6) {
+        lyricsRetries++;
+        setTimeout(requestLyrics, 1000);
+        return;
+      }
+      const data = payload.lyrics;
+      if (data && data.synced) {
+        lyricsLines = parseLrc(data.synced);
+      } else if (data && data.plain) {
+        lyricsLines = data.plain.split('\n').map(line => ({ time: -1, text: line.trim() }));
+      } else {
+        lyricsLines = [];
+      }
+      if (lyricsLines.length === 0) {
+        el.lyricsStatus.textContent = 'Aucune parole trouvée pour ce morceau.';
+        el.lyricsStatus.hidden = false;
+      } else {
+        el.lyricsStatus.hidden = true;
+        prepareLyricsWords();
+        renderLyrics();
       }
     }
 
@@ -2035,8 +2002,10 @@
         renderRepeatBtn(s.repeatMode);
       }
 
-      // Paroles
-      const trackKey = (s.title || '') + '|' + (s.artist || '');
+      // Paroles : clé = identifiant de la vidéo quand le PC le fournit (l'affichage
+      // anticipé d'un titre lancé depuis le mobile n'en a pas encore)
+      if (s.videoId) lastPcTrackKey = s.videoId;
+      const trackKey = s.videoId || ((s.title || '') + '|' + (s.artist || ''));
       if (trackKey !== lastLyricsTrackKey) {
         lastLyricsTrackKey = trackKey;
         if (lyricsOpen) {

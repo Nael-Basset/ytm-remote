@@ -608,7 +608,10 @@
     const syncTitle = document.documentElement.getAttribute('data-ytm-current-title');
     const syncArtist = document.documentElement.getAttribute('data-ytm-current-artist');
     if (syncTitle) {
-      return { title: syncTitle, artist: syncArtist || '' };
+      // Artiste absent des données du lecteur : celui des métadonnées média, si elles décrivent ce titre
+      const ms = navigator.mediaSession?.metadata;
+      const msArtist = ms && ms.title === syncTitle ? ms.artist : '';
+      return { title: syncTitle, artist: syncArtist || msArtist || '' };
     }
 
     // 2. MediaSession API native
@@ -813,6 +816,7 @@
     const inPip = (video && document.pictureInPictureElement === video) || (activePipWindow && !activePipWindow.closed);
 
     return {
+      videoId: VIDEO_ID_RE.test(currentVideoId || '') ? currentVideoId : '',
       title,
       artist,
       albumArt,
@@ -1450,129 +1454,135 @@
   }
 
   // Chargement des paroles lrclib
+  // ==========================================
+  // Paroles : service unique (PiP, popup et télécommande)
+  // ==========================================
+  // Une seule recherche par morceau (lyrics-core.js), mise en cache : le popup et la télécommande
+  // la demandent au lieu d'interroger lrclib chacun de leur côté (ce qui provoquait des refus 429).
+  const parseLrc = YTMLyrics.parseLrc;
+  const lyricsCache = new Map(); // clé du morceau -> Promise<{ synced, plain, source } | null>
+
+  function lyricsKey(info) {
+    return info.videoId || `${info.title}|${info.artist}`;
+  }
+
+  async function lrclibJson(url) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 8000);
+        const res = await fetch(url, { signal: ctrl.signal });
+        clearTimeout(timer);
+        if (res.status === 429) {
+          await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+          continue;
+        }
+        return res.ok ? await res.json() : null;
+      } catch (e) {
+        if (attempt === 2) return null;
+      }
+    }
+    return null;
+  }
+
+  // La durée n'est connue qu'une fois la piste chargée : sans elle, la correspondance est moins sûre
+  async function waitForDuration(maxMs = 4000) {
+    const start = Date.now();
+    while (Date.now() - start < maxMs) {
+      const v = document.querySelector('video');
+      if (v && isFinite(v.duration) && v.duration > 0) return v.duration;
+      await new Promise(r => setTimeout(r, 250));
+    }
+    return 0;
+  }
+
+  // Paroles de YouTube Music, demandées au pont (monde de la page)
+  function nativeLyrics(videoId) {
+    if (!videoId || !bridgeReady()) return Promise.resolve('');
+    return new Promise((resolve) => {
+      const id = Math.random().toString(36).slice(2);
+      const done = (text) => {
+        window.removeEventListener('ytm-native-lyrics-response', onResponse);
+        clearTimeout(timer);
+        resolve(text);
+      };
+      const onResponse = (e) => {
+        let res = {};
+        try { res = JSON.parse(e.detail); } catch (err) { return; }
+        if (res.id === id) done(typeof res.text === 'string' ? res.text : '');
+      };
+      const timer = setTimeout(() => done(''), 8000);
+      window.addEventListener('ytm-native-lyrics-response', onResponse);
+      window.dispatchEvent(new CustomEvent('ytm-native-lyrics-request', { detail: JSON.stringify({ id, videoId }) }));
+    });
+  }
+
+  // Juste après un changement de morceau, le lecteur annonce la nouvelle vidéo avant son titre ;
+  // entre-temps, les métadonnées décrivent encore le morceau précédent. On attend que le titre
+  // synchronisé corresponde à cette vidéo avant de lancer la recherche.
+  async function stableTrackMeta(videoId, maxMs = 6000) {
+    const root = document.documentElement;
+    const start = Date.now();
+    while (Date.now() - start < maxMs) {
+      if (root.getAttribute('data-ytm-current-videoid') === videoId && root.getAttribute('data-ytm-current-title')) {
+        return readTrackMeta();
+      }
+      await new Promise(r => setTimeout(r, 250));
+    }
+    return null;
+  }
+
+  // Paroles du morceau décrit par info (titre, artiste, durée, videoId)
+  function getLyrics(info) {
+    if (!info || !info.title) return Promise.resolve(null);
+    const key = lyricsKey(info);
+    if (!lyricsCache.has(key)) {
+      const p = (async () => {
+        const meta = info.videoId ? await stableTrackMeta(info.videoId) : { title: info.title, artist: info.artist };
+        if (!meta || !meta.title) return null;
+        // Durée lue une fois le morceau stabilisé (avant, elle peut encore être celle du précédent)
+        const duration = info.videoId ? await waitForDuration() : (info.duration > 0 ? info.duration : await waitForDuration());
+        return YTMLyrics.findLyrics(meta.title, meta.artist, duration, lrclibJson, {
+          nativeLyrics: () => nativeLyrics(info.videoId)
+        });
+      })().catch(() => null);
+      lyricsCache.set(key, p);
+      // Un échec n'est pas gardé : nouvel essai possible une minute plus tard
+      p.then(r => { if (!r) setTimeout(() => lyricsCache.delete(key), 60000); });
+      if (lyricsCache.size > 50) lyricsCache.delete(lyricsCache.keys().next().value);
+    }
+    return lyricsCache.get(key);
+  }
+
   async function loadPipLyrics(info, pel) {
+    pipLyricsLines = [];
+    pel.lyricsContent.innerHTML = '';
     if (!info.title) {
       pel.lyricsStatus.textContent = 'Aucun titre en cours de lecture.';
       pel.lyricsStatus.hidden = false;
-      pel.lyricsContent.innerHTML = '';
       return;
     }
-
     pel.lyricsStatus.textContent = 'Chargement des paroles…';
     pel.lyricsStatus.hidden = false;
-    pel.lyricsContent.innerHTML = '';
-    pipLyricsLines = [];
 
-    const rawT = (info.title || '').replace(/\s*[\(\[][^\)\]]*(official|clip|video|audio|remaster|visualizer|live|prod\.|feat\.?|ft\.?)[^\)\]]*[\)\]]/gi, '').trim();
-    const rawA = (info.artist || '').split(/\s*[•·]\s*/)[0].replace(/\s*[\(\[]?\s*(feat\.?|ft\.?)\b[^\)\]]*[\)\]]?/gi, '').trim();
+    const key = lyricsKey(info);
+    const data = await getLyrics(info);
+    // Le morceau a changé pendant la recherche : ces paroles ne le concernent plus
+    if (key !== lyricsKey(getTrackInfo())) return;
 
-    let cleanTitle = rawT;
-    let cleanArtist = rawA;
-    if (rawT.includes(' - ')) {
-      const parts = rawT.split(' - ');
-      if (parts.length === 2) {
-        if (!rawA || rawA.toLowerCase() === parts[0].trim().toLowerCase() || parts[0].trim().toLowerCase().includes(rawA.toLowerCase())) {
-          cleanArtist = parts[0].trim();
-          cleanTitle = parts[1].trim();
-        }
-      }
+    if (data && data.synced) {
+      pipLyricsLines = parseLrc(data.synced);
+    } else if (data && data.plain) {
+      pipLyricsLines = data.plain.split('\n').map((text, i) => ({ time: -1 - i, text: text.trim() }));
     }
-
-    try {
-      let data = null;
-      // 1. Essai avec durée exacte
-      try {
-        let res = await fetch(`https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTitle)}&artist_name=${encodeURIComponent(cleanArtist)}&duration=${Math.round(info.duration || 0)}`);
-        if (res.ok) data = await res.json();
-      } catch (e) {}
-
-      // 2. Essai sans contrainte de durée
-      if (!data || !data.syncedLyrics) {
-        try {
-          let res2 = await fetch(`https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTitle)}&artist_name=${encodeURIComponent(cleanArtist)}`);
-          if (res2.ok) {
-            const d2 = await res2.json();
-            if (d2 && d2.syncedLyrics) data = d2;
-          }
-        } catch (e) {}
-      }
-
-      // 3. Recherche large et sélection du candidat avec les paroles synchronisées le plus proche de la durée réelle
-      if (!data || !data.syncedLyrics) {
-        try {
-          let resSearch = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(cleanTitle + ' ' + cleanArtist)}`);
-          if (resSearch.ok) {
-            const list = await resSearch.json();
-            if (Array.isArray(list) && list.length > 0) {
-              const synced = list.filter(x => x && x.syncedLyrics);
-              if (synced.length > 0) {
-                synced.sort((a, b) => {
-                  const diffA = Math.abs((a.duration || 0) - (info.duration || 0));
-                  const diffB = Math.abs((b.duration || 0) - (info.duration || 0));
-                  return diffA - diffB;
-                });
-                data = synced[0];
-              } else if (!data) {
-                data = list[0];
-              }
-            }
-          }
-        } catch (e) {}
-      }
-
-      // 4. Fallback si aucune parole : vérifier les paroles natives de YouTube Music sur la page
-      if (!data || (!data.syncedLyrics && !data.plainLyrics)) {
-        const ytmLyricsEl = document.querySelector('.description.ytmusic-description-shelf-renderer, ytmusic-lyrics-shelf-renderer .lyrics');
-        if (ytmLyricsEl && ytmLyricsEl.textContent.trim()) {
-          data = { plainLyrics: ytmLyricsEl.textContent.trim() };
-        }
-      }
-
-      if (data && data.syncedLyrics) {
-        pipLyricsLines = parseLrc(data.syncedLyrics);
-      } else if (data && data.plainLyrics) {
-        pipLyricsLines = data.plainLyrics.split('\n').map((text, i) => ({ time: -1 - i, text: text.trim() }));
-      }
-
-      if (pipLyricsLines.length === 0) {
-        pel.lyricsStatus.textContent = 'Aucune parole trouvée pour ce titre.';
-        pel.lyricsStatus.hidden = false;
-      } else {
-        pel.lyricsStatus.hidden = true;
-        preparePipLyricsWords();
-        renderPipLyrics(pel);
-      }
-    } catch (e) {
-      pel.lyricsStatus.textContent = 'Impossible de charger les paroles.';
+    if (pipLyricsLines.length === 0) {
+      pel.lyricsStatus.textContent = 'Aucune parole trouvée pour ce titre.';
       pel.lyricsStatus.hidden = false;
+    } else {
+      pel.lyricsStatus.hidden = true;
+      preparePipLyricsWords();
+      renderPipLyrics(pel);
     }
-  }
-
-  function parseLrc(lrc) {
-    const out = [];
-    let offsetSec = 0;
-    const offsetMatch = lrc.match(/\[offset:\s*([+-]?\d+)\s*\]/i);
-    if (offsetMatch) {
-      offsetSec = parseInt(offsetMatch[1], 10) / 1000;
-    }
-
-    for (const raw of lrc.split('\n')) {
-      const line = raw.trim();
-      let work = line;
-      const stamps = [];
-      let m;
-      while ((m = work.match(/^\[(\d+):(\d+)(?:[.:](\d+))?\]/))) {
-        const mm = parseInt(m[1], 10);
-        const ss = parseInt(m[2], 10);
-        const ff = m[3] ? parseInt(m[3].padEnd(3, '0').slice(0, 3), 10) / 1000 : 0;
-        stamps.push(mm * 60 + ss + ff + offsetSec);
-        work = work.slice(m[0].length);
-      }
-      const text = work.trim();
-      for (const t of stamps) out.push({ time: Math.max(0, t), text });
-    }
-    out.sort((a, b) => a.time - b.time);
-    return out;
   }
 
   function preparePipLyricsWords() {
@@ -2235,6 +2245,13 @@
           // Rien n'est accepté tant que l'appareil n'a pas été autorisé sur le PC
           if (!info.approved) return;
 
+          if (payload.action === 'get-lyrics') {
+            const lyricsInfo = getTrackInfo();
+            const lyrics = await getLyrics(lyricsInfo);
+            sendTo(conn, { type: 'lyrics', requestId: cleanText(payload.requestId, 64), key: lyricsKey(lyricsInfo), lyrics });
+            return;
+          }
+
           if (payload.action === 'search') {
             const query = cleanText(payload.query || payload.value, 150).trim();
             const reqId = cleanText(payload.requestId, 64);
@@ -2356,6 +2373,12 @@
   // 6. Gestionnaire de Messages
   // ==========================================
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    // Seule réponse asynchrone : on garde le canal ouvert le temps de la recherche
+    if (message.action === 'get-lyrics') {
+      const info = getTrackInfo();
+      getLyrics(info).then(lyrics => sendResponse({ key: lyricsKey(info), lyrics }));
+      return true;
+    }
     switch (message.action) {
       case 'get-track-info':
         sendResponse(getTrackInfo());

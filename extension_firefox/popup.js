@@ -176,7 +176,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    const key = (info.title || '') + '|' + (info.artist || '');
+    // Morceau identifié par sa vidéo quand elle est connue (le titre peut varier pendant le chargement)
+    const key = info.videoId || ((info.title || '') + '|' + (info.artist || ''));
     if (key !== lastTrackKey) {
       lastTrackKey = key;
       if (el.lyricsSection.classList.contains('open')) loadLyrics(info);
@@ -391,26 +392,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let lyricsLines = [];
   let lyricsActiveIdx = -1;
 
-  function parseLrc(lrc) {
-    const out = [];
-    for (const raw of lrc.split('\n')) {
-      const line = raw.trim();
-      let work = line;
-      const stamps = [];
-      let m;
-      while ((m = work.match(/^\[(\d+):(\d+)(?:[.:](\d+))?\]/))) {
-        const mm = parseInt(m[1], 10);
-        const ss = parseInt(m[2], 10);
-        const ff = m[3] ? parseInt(m[3].padEnd(3, '0').slice(0, 3), 10) / 1000 : 0;
-        stamps.push(mm * 60 + ss + ff);
-        work = work.slice(m[0].length);
-      }
-      const text = work.trim();
-      for (const t of stamps) out.push({ time: t, text });
-    }
-    out.sort((a, b) => a.time - b.time);
-    return out;
-  }
+  const parseLrc = YTMLyrics.parseLrc;
 
   function renderLyrics() {
     el.lyricsContent.innerHTML = '';
@@ -451,44 +433,11 @@ document.addEventListener('DOMContentLoaded', () => {
     lyricsActiveIdx = idx;
   }
 
-  function cleanTitle(t) {
-    return (t || '')
-      .replace(/\s*[\(\[][^\)\]]*(official|lyric|video|audio|mv|m\/v|hd|hq|remaster)[^\)\]]*[\)\]]/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-  function cleanArtist(a) {
-    if (!a) return '';
-    return a.split(/\s*[•·]\s*/)[0]
-      .replace(/\s*[\(\[]?\s*(feat\.?|ft\.?|featuring)\b[^\)\]]*[\)\]]?/gi, '')
-      .trim();
-  }
-
-  function lrcUrl(path, params) {
-    const qs = new URLSearchParams(params);
-    return `https://lrclib.net/api/${path}?${qs.toString()}`;
-  }
-
-  async function fetchLrclibGet(title, artist, duration) {
-    const params = { track_name: title, artist_name: artist };
-    if (duration) params.duration = String(Math.round(duration));
-    const res = await fetch(lrcUrl('get', params));
-    if (!res.ok) return null;
-    return res.json();
-  }
-
-  async function fetchLrclibSearch(title, artist) {
-    const res = await fetch(lrcUrl('search', { track_name: title, artist_name: artist }));
-    if (!res.ok) return null;
-    const arr = await res.json();
-    return Array.isArray(arr) && arr.length > 0 ? arr[0] : null;
-  }
-
   function applyLyricsData(data) {
-    if (data && data.syncedLyrics) {
-      lyricsLines = parseLrc(data.syncedLyrics);
-    } else if (data && data.plainLyrics) {
-      lyricsLines = data.plainLyrics.split('\n').map((t, i) => ({ time: -1 - i, text: t.trim() }));
+    if (data && data.synced) {
+      lyricsLines = parseLrc(data.synced);
+    } else if (data && data.plain) {
+      lyricsLines = data.plain.split('\n').map((t, i) => ({ time: -1 - i, text: t.trim() }));
     } else {
       lyricsLines = [];
     }
@@ -545,26 +494,20 @@ document.addEventListener('DOMContentLoaded', () => {
     el.lyricsContent.innerHTML = '';
     lyricsLines = [];
 
-    const title = cleanTitle(info.title);
-    const artist = cleanArtist(info.artist);
-    const query = { title, artist };
+    const trackKey = info.videoId || ((info.title || '') + '|' + (info.artist || ''));
+    const query = { title: info.title, artist: info.artist };
+    // Recherche faite (et mise en cache) par l'onglet YouTube Music
+    const res = await send('get-lyrics');
+    // Le morceau a changé pendant la recherche : ces paroles ne le concernent plus
+    if (trackKey !== lastTrackKey) return;
 
-    try {
-      let data = await fetchLrclibGet(title, artist, info.duration);
-      if (!data) data = await fetchLrclibGet(title, artist, 0);
-      if (!data) data = await fetchLrclibSearch(title, artist);
-
-      applyLyricsData(data);
-      el.lyricsLoading.hidden = true;
-      if (lyricsLines.length === 0) {
-        showLyricsEmpty(query);
-      } else {
-        el.lyricsEmpty.hidden = true;
-        renderLyrics();
-      }
-    } catch (e) {
-      el.lyricsLoading.hidden = true;
-      showLyricsEmpty(query, e.message || 'Network error');
+    applyLyricsData(res && res.lyrics);
+    el.lyricsLoading.hidden = true;
+    if (lyricsLines.length === 0) {
+      showLyricsEmpty(query, res ? null : 'No YT Music tab found');
+    } else {
+      el.lyricsEmpty.hidden = true;
+      renderLyrics();
     }
   }
 

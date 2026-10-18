@@ -95,7 +95,8 @@ flowchart LR
 | :--- | :--- |
 | `0.peerjs.com` (serveur PeerJS public) | Mise en relation initiale du téléphone et du PC (signalisation) |
 | `stun.l.google.com` | Découverte de l'adresse réseau pour la connexion P2P |
-| `lrclib.net` | Paroles synchronisées (titre et artiste du morceau envoyés) |
+| `lrclib.net` | Paroles synchronisées (titre et artiste du morceau envoyés, une seule recherche par morceau) |
+| `music.youtube.com` | Paroles de YouTube Music en recours, quand lrclib ne connaît pas le morceau |
 | `nael-basset.github.io` | Hébergement de la page mobile |
 
 Le QR Code est généré localement : l'identifiant de salle n'est envoyé à aucun service de QR Code.

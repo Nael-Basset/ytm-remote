@@ -165,9 +165,14 @@
           const videoId = data.video_id || '';
           const title = data.title || '';
           const artist = data.author || '';
-          if (title) document.documentElement.setAttribute('data-ytm-current-title', title);
-          if (artist) document.documentElement.setAttribute('data-ytm-current-artist', artist);
-          if (videoId) document.documentElement.setAttribute('data-ytm-current-videoid', videoId);
+          // Les trois valeurs décrivent la même piste : on les écrit toujours ensemble, même vides,
+          // sinon l'artiste du morceau précédent restait affiché (et faussait la recherche de paroles).
+          // Exception : un titre momentanément vide pour la même vidéo (chargement) est ignoré.
+          const root = document.documentElement;
+          if (!title && videoId && videoId === root.getAttribute('data-ytm-current-videoid')) return;
+          document.documentElement.setAttribute('data-ytm-current-title', title);
+          document.documentElement.setAttribute('data-ytm-current-artist', artist);
+          document.documentElement.setAttribute('data-ytm-current-videoid', videoId);
         }
       }
     } catch (e) {}
@@ -278,6 +283,37 @@
     }
     runSync();
     setTimeout(runSync, 400);
+  });
+
+  // Paroles de YouTube Music (onglet « Paroles ») pour une vidéo donnée, via ses propres endpoints :
+  // /next donne l'identifiant de l'onglet Paroles, /browse son contenu. Réponse renvoyée au
+  // content script par l'événement ytm-native-lyrics-response.
+  function findKey(node, key, out = []) {
+    if (!node || typeof node !== 'object') return out;
+    if (key in node) out.push(node[key]);
+    for (const k of Object.keys(node)) findKey(node[k], key, out);
+    return out;
+  }
+
+  async function fetchNativeLyrics(videoId) {
+    const app = document.querySelector('ytmusic-app');
+    if (typeof app?.networkManager?.fetch !== 'function') return '';
+    const next = await app.networkManager.fetch('/next', { videoId });
+    const browseId = findKey(next, 'browseEndpoint').map(e => e && e.browseId).find(id => /^MPLY/.test(id || ''));
+    if (!browseId) return '';
+    const page = await app.networkManager.fetch('/browse', { browseId });
+    const shelf = findKey(page, 'musicDescriptionShelfRenderer')[0];
+    return (shelf?.description?.runs || []).map(r => r.text || '').join('');
+  }
+
+  window.addEventListener('ytm-native-lyrics-request', async (e) => {
+    let req = {};
+    try { req = JSON.parse(e.detail); } catch (err) { return; }
+    let text = '';
+    if (/^[a-zA-Z0-9_-]{11}$/.test(req.videoId || '')) {
+      try { text = await fetchNativeLyrics(req.videoId); } catch (err) {}
+    }
+    window.dispatchEvent(new CustomEvent('ytm-native-lyrics-response', { detail: JSON.stringify({ id: req.id, text }) }));
   });
 
   // Sauter à un élément de la file d'attente
