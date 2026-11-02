@@ -136,5 +136,14 @@
   },
   "toggleVideo": {
     "message": "Afficher / Masquer la vidéo"
+  },
+  "staleTabTitle": {
+    "message": "Extension mise à jour"
+  },
+  "staleTabAction": {
+    "message": "Cliquez ici pour rafraîchir l'onglet YouTube Music"
+  },
+  "staleTabReloading": {
+    "message": "Rafraîchissement…"
   }
 }

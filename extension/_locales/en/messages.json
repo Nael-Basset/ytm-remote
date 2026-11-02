@@ -136,5 +136,14 @@
   },
   "toggleVideo": {
     "message": "Toggle Video View"
+  },
+  "staleTabTitle": {
+    "message": "Extension updated"
+  },
+  "staleTabAction": {
+    "message": "Click here to refresh the YouTube Music tab"
+  },
+  "staleTabReloading": {
+    "message": "Refreshing…"
   }
 }

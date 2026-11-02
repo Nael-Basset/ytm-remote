@@ -524,3 +524,6 @@ body.light .lyric-line:not(.no-sync):hover { background: rgba(0, 0, 0, 0.04); }
   transition: background-color 0.15s ease;
 }
 .lyrics-empty .lyrics-links a:hover { background: var(--hover); }
+
+/* Onglet YouTube Music à rafraîchir après une mise à jour de l'extension */
+.track-artist.stale-action { color: var(--accent); cursor: pointer; text-decoration: underline; white-space: normal; }

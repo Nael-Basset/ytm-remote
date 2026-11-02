@@ -136,5 +136,14 @@
   },
   "toggleVideo": {
     "message": "Видео"
+  },
+  "staleTabTitle": {
+    "message": "Расширение обновлено"
+  },
+  "staleTabAction": {
+    "message": "Нажмите, чтобы обновить вкладку YouTube Music"
+  },
+  "staleTabReloading": {
+    "message": "Обновление…"
   }
 }

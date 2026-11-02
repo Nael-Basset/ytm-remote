@@ -86,20 +86,56 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Helpers de synchronisation
-  async function getMusicTab() {
+  // Onglets YouTube Music, du plus pertinent au moins pertinent : celui qui joue, puis l'actif,
+  // puis le plus récemment utilisé
+  async function getMusicTabs() {
     const tabs = await browser.tabs.query({ url: '*://music.youtube.com/*' });
-    return tabs[0] || null;
+    return tabs.sort((a, b) =>
+      (b.audible === true) - (a.audible === true) ||
+      (b.active === true) - (a.active === true) ||
+      (b.lastAccessed || 0) - (a.lastAccessed || 0));
   }
 
-  async function send(action, extra = {}) {
-    const tab = await getMusicTab();
-    if (!tab) return null;
-    try {
-      return await browser.tabs.sendMessage(tab.id, { action, ...extra });
-    } catch (e) {
-      return null;
-    }
+  async function getMusicTab() {
+    return (await getMusicTabs())[0] || null;
   }
+
+  // Onglet qui répond, mémorisé. Un onglet ouvert avant une mise à jour ou un rechargement de
+  // l'extension garde l'ancien script, « débranché » : il ne répond plus tant qu'il n'est pas
+  // rafraîchi. On essaie donc chaque onglet, et on retient s'ils sont tous dans ce cas.
+  let liveTabId = null;
+  let staleTabId = null;
+
+  async function send(action, extra = {}) {
+    const tabs = await getMusicTabs();
+    const ordered = liveTabId ? [...tabs.filter(t => t.id === liveTabId), ...tabs.filter(t => t.id !== liveTabId)] : tabs;
+    for (const tab of ordered) {
+      try {
+        const res = await browser.tabs.sendMessage(tab.id, { action, ...extra });
+        liveTabId = tab.id;
+        staleTabId = null;
+        return res;
+      } catch (e) {
+        // onglet sans script actif : on passe au suivant
+      }
+    }
+    liveTabId = null;
+    staleTabId = tabs.length ? tabs[0].id : null;
+    return null;
+  }
+
+  function showStaleTab() {
+    el.title.textContent = browser.i18n.getMessage('staleTabTitle') || 'Extension updated';
+    el.artist.textContent = browser.i18n.getMessage('staleTabAction') || 'Click here to refresh the YouTube Music tab';
+    el.artist.classList.add('stale-action');
+  }
+
+  el.artist.addEventListener('click', () => {
+    if (!el.artist.classList.contains('stale-action') || !staleTabId) return;
+    browser.tabs.reload(staleTabId);
+    el.artist.classList.remove('stale-action');
+    el.artist.textContent = browser.i18n.getMessage('staleTabReloading') || 'Refreshing…';
+  });
 
   async function refresh() {
     const tab = await getMusicTab();
@@ -113,7 +149,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const info = await send('get-track-info');
-    if (!info) return;
+    if (!info) {
+      if (staleTabId) showStaleTab();
+      return;
+    }
+    el.artist.classList.remove('stale-action');
     applyTrackInfo(info);
   }
 
@@ -261,8 +301,13 @@ document.addEventListener('DOMContentLoaded', () => {
     el.qrBtn.addEventListener('click', async () => {
       const res = await send('toggle-page-qr');
       if (!res) {
-        // Pas d'onglet YouTube Music prêt : on en ouvre un (le QR code s'affiche depuis la page)
-        browser.tabs.create({ url: 'https://music.youtube.com' });
+        if (staleTabId) {
+          // Onglet ouvert mais script débranché : on le rafraîchit au lieu d'en ouvrir un autre
+          browser.tabs.reload(staleTabId);
+          browser.tabs.update(staleTabId, { active: true });
+        } else {
+          browser.tabs.create({ url: 'https://music.youtube.com' });
+        }
       }
       window.close();
     });
@@ -275,7 +320,11 @@ document.addEventListener('DOMContentLoaded', () => {
       browser.tabs.create({ url: 'https://music.youtube.com' });
       return;
     }
-    await send('open-doc-pip');
+    const res = await send('open-doc-pip');
+    if (!res && staleTabId) {
+      showStaleTab();
+      return;
+    }
     window.close();
   });
 
