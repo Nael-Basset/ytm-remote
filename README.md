@@ -70,7 +70,8 @@ Choisissez votre navigateur ci-dessous :
 | **🎤 Paroles Mot par Mot (BetterLyrics)** | Les mots s'illuminent au rythme exact où ils sont chantés (sans grossissement intempestif pour une lisibilité parfaite). Mode plein écran immersif inclus. |
 | **🎶 File d'attente complète ("À suivre")** | Affiche tous les morceaux à venir avec leurs pochettes d'album haute qualité (sans blocage après le 14ᵉ morceau). Cliquez sur n'importe quel titre pour le lancer. |
 | **🔁 Répétition à 3 États** | Basculez d'un clic entre **Désactivé (0)**, **Répéter toute la playlist (1)** et **Répéter le morceau en cours (2)**. |
-| **✋ Volume au geste** | Glissez vers le haut ou le bas sur la pochette pour régler le volume. Ou activez le bouton ✋ : la caméra du téléphone suit l'écart entre le pouce et l'index (calcul local, aucune image envoyée), et le volume se verrouille quand la main sort du champ. Pratique les mains occupées. |
+| **✋ Volume au geste** | Glissez vers le haut ou le bas sur la pochette pour régler le volume. |
+| **🖐️ Curseur à la main** | Bouton ✋ : la caméra du téléphone suit votre paume et déplace un curseur rond sur la télécommande. Pincez pouce et index pour cliquer ; pincez, déplacez puis relâchez pour glisser (volume, progression). Calcul local, aucune image envoyée. Pratique les mains occupées. |
 | **🎛️ Commandes complètes** | Lecture, Pause, Suivant, Précédent, Barre de progression fluide, Contrôle du volume, Like, Dislike, Mode Aléatoire (Shuffle). |
 | **⌨️ Raccourcis Clavier Globaux** | Contrôlez YouTube Music en jeu ou dans n'importe quel logiciel grâce aux touches de raccourci paramétrables. |
 | **🔒 Respectueux de la vie privée** | Aucune donnée collectée par l'extension, aucun compte requis, communication P2P chiffrée (DTLS), chaque appareil doit être autorisé sur le PC. |

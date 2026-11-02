@@ -301,7 +301,31 @@
     }
     .btn-hand.loading { color: var(--text); animation: hand-pulse 1s ease-in-out infinite; }
     .btn-hand.tracking { color: #fff; background: var(--accent); border-color: var(--accent); box-shadow: 0 0 14px var(--accent-glow); }
-    .btn-hand.locked { color: var(--accent); background: rgba(255, 0, 85, 0.14); border-color: rgba(255, 0, 85, 0.4); }
+    .btn-hand.idle { color: var(--accent); background: rgba(255, 0, 85, 0.14); border-color: rgba(255, 0, 85, 0.4); }
+    /* Curseur piloté à la main */
+    .air-cursor {
+      position: fixed;
+      left: -16px;
+      top: -16px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 3px solid #fff;
+      background: rgba(255, 0, 85, 0.25);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 4px 14px rgba(0, 0, 0, 0.4);
+      pointer-events: none;
+      z-index: 1000;
+      transition: width 0.1s ease, height 0.1s ease, left 0.1s ease, top 0.1s ease, background 0.1s ease;
+    }
+    .air-cursor.pressed {
+      left: -11px;
+      top: -11px;
+      width: 22px;
+      height: 22px;
+      background: var(--accent);
+    }
+    .air-hover { outline: 2px solid var(--accent); outline-offset: 3px; }
+    .air-pressed { transform: scale(0.94); }
     .btn-hand.error { color: #ff3344; border-color: rgba(255, 51, 68, 0.5); }
     @keyframes hand-pulse { 50% { opacity: 0.4; } }
     /* Glissement vertical sur la pochette : réglage du volume */
@@ -899,7 +923,7 @@
     <div class="volume-box">
       <svg viewBox="0 0 24 24" width="18" height="18"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 00-2.5-4.03v8.05A4.5 4.5 0 0016.5 12z"/></svg>
       <input type="range" class="volume-slider" id="volume" min="0" max="100" value="100">
-      <button class="btn-hand" id="hand-btn" title="Volume à la main (caméra) : écartez ou rapprochez le pouce et l'index" aria-label="Volume à la main">
+      <button class="btn-hand" id="hand-btn" title="Curseur à la main (caméra) : paume pour viser, pincement pour cliquer" aria-label="Curseur à la main">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M21 7a1.5 1.5 0 0 0-3 0v4.5h-.5V3.5a1.5 1.5 0 0 0-3 0v8h-.5V2.5a1.5 1.5 0 0 0-3 0v9H10.5V5a1.5 1.5 0 0 0-3 0v10.2l-2.4-2.3a1.6 1.6 0 0 0-2.3 2.2l4.6 5.4A5 5 0 0 0 11.2 22H16a5 5 0 0 0 5-5z"/></svg>
       </button>
     </div>
@@ -2013,67 +2037,218 @@
       wrap.addEventListener('pointercancel', end);
     })();
 
-    // --- Pincement devant la caméra (MediaPipe Hand Landmarker, calcul local sur le téléphone)
-    // L'écart pouce-index, rapporté à la taille de la main (poignet -> base du majeur), donne le
-    // volume : indépendant de la distance à la caméra. Main absente = volume verrouillé ; quand
-    // elle revient, il faut la garder visible un court instant avant que le réglage reprenne.
+    // --- Curseur à la main (MediaPipe Hand Landmarker, calcul local sur le téléphone)
+    // La paume déplace un curseur rond ; pincer (pouce contre index) enfonce, écarter relâche.
+    // Pincement bref = clic ; pincer, déplacer, relâcher = glisser (curseurs de volume et de
+    // progression, pochette, listes). La position suit le centre de la paume, pas les doigts,
+    // pour que le pincement lui-même ne fasse pas bouger le curseur.
     const HAND = {
       MEDIAPIPE: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14',
       MODEL: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
-      PINCH_MIN: 0.25,   // écart relatif considéré comme 0 %
-      PINCH_MAX: 1.15,   // écart relatif considéré comme 100 %
-      LOST_MS: 500,      // main absente depuis plus longtemps -> verrouillé
-      RESUME_MS: 350,    // main visible depuis au moins ce temps -> réglage repris
-      SMOOTHING: 0.35,   // lissage exponentiel du volume
-      FRAME_MS: 66       // ~15 analyses par seconde
+      ZONE_X: [0.2, 0.8],   // portion de l'image (en largeur) qui couvre tout l'écran
+      ZONE_Y: [0.15, 0.75], // idem en hauteur : la main se tient plutôt dans le haut de l'image
+      PINCH_ON: 0.28,       // écart pouce-index / taille de la main : en dessous = pincé
+      PINCH_OFF: 0.42,      // au-dessus = relâché (hystérésis contre les clics parasites)
+      PINCH_FRAMES: 2,      // images consécutives pincées avant d'enfoncer
+      CLICK_LOCK_MS: 180,   // le curseur reste figé au début du pincement (clic précis)
+      READY_MS: 200,        // main visible depuis au moins ce temps avant de pouvoir pincer
+      LOST_MS: 300,         // main absente depuis plus longtemps : curseur masqué, relâché
+      FRAME_MS: 50          // ~20 analyses par seconde
     };
 
-    // Logique pure (testable) : met à jour l'état à partir des points de la main (ou null)
-    function handVolumeStep(state, landmarks, now) {
-      if (!landmarks) {
-        if (state.mode === 'tracking' && now - state.lastSeen > HAND.LOST_MS) state.mode = 'locked';
+    const clamp01 = (v) => Math.max(0, Math.min(1, v));
+
+    function newAirState() {
+      return { visible: false, x: 0, y: 0, pressed: false, pinchFrames: 0, pressedAt: 0, anchorX: 0, anchorY: 0, seenSince: 0, lastSeen: 0 };
+    }
+
+    // Logique pure (testable) : à partir des points de la main (ou null), met à jour l'état et
+    // renvoie les événements à appliquer : move, down, up (cancel si la main est perdue), hide.
+    function airStep(state, landmarks, now, vw, vh) {
+      const events = [];
+      const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+      const size = landmarks ? d(landmarks[0], landmarks[9]) : 0;
+      if (!landmarks || size < 0.02) {
         state.seenSince = 0;
-        return state;
+        if (state.visible && now - state.lastSeen > HAND.LOST_MS) {
+          if (state.pressed) { state.pressed = false; events.push({ type: 'up', x: state.x, y: state.y, cancel: true }); }
+          state.visible = false;
+          events.push({ type: 'hide' });
+        }
+        return events;
       }
       state.lastSeen = now;
       if (!state.seenSince) state.seenSince = now;
-      if (state.mode !== 'tracking') {
-        if (now - state.seenSince < HAND.RESUME_MS) return state;
-        state.mode = 'tracking';
-        state.smoothed = null;
+
+      // Centre de la paume, image retournée en miroir (caméra frontale)
+      const pts = [0, 5, 9, 17].map(i => landmarks[i]);
+      const px = 1 - pts.reduce((s, p) => s + p.x, 0) / pts.length;
+      const py = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+      const tx = clamp01((px - HAND.ZONE_X[0]) / (HAND.ZONE_X[1] - HAND.ZONE_X[0])) * vw;
+      const ty = clamp01((py - HAND.ZONE_Y[0]) / (HAND.ZONE_Y[1] - HAND.ZONE_Y[0])) * vh;
+
+      if (!state.visible) {
+        state.visible = true;
+        state.x = tx;
+        state.y = ty;
+      } else {
+        // Lissage adaptatif : stable quand la main est quasi immobile, réactif quand elle bouge vite
+        const dist = Math.hypot(tx - state.x, ty - state.y);
+        const alpha = Math.max(0.2, Math.min(0.85, 0.2 + dist / 80));
+        state.x += (tx - state.x) * alpha;
+        state.y += (ty - state.y) * alpha;
       }
-      const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-      const size = d(landmarks[0], landmarks[9]);
-      if (size < 0.02) return state; // main trop petite / mal détectée
+
+      // Pincement avec hystérésis
       const ratio = d(landmarks[4], landmarks[8]) / size;
-      const target = Math.max(0, Math.min(1, (ratio - HAND.PINCH_MIN) / (HAND.PINCH_MAX - HAND.PINCH_MIN))) * 100;
-      state.smoothed = state.smoothed === null ? target : state.smoothed + (target - state.smoothed) * HAND.SMOOTHING;
-      state.volume = Math.round(state.smoothed);
-      return state;
+      const ready = now - state.seenSince >= HAND.READY_MS;
+      if (!state.pressed) {
+        state.pinchFrames = ratio < HAND.PINCH_ON ? state.pinchFrames + 1 : 0;
+        if (ready && state.pinchFrames >= HAND.PINCH_FRAMES) {
+          state.pressed = true;
+          state.pressedAt = now;
+          state.anchorX = state.x;
+          state.anchorY = state.y;
+          events.push({ type: 'down', x: state.x, y: state.y });
+        }
+      } else if (ratio > HAND.PINCH_OFF) {
+        state.pressed = false;
+        state.pinchFrames = 0;
+        events.push({ type: 'up', x: state.x, y: state.y, cancel: false });
+      }
+      // Début de pincement : curseur figé pour que le clic tombe là où on visait
+      if (state.pressed && now - state.pressedAt < HAND.CLICK_LOCK_MS) {
+        state.x = state.anchorX;
+        state.y = state.anchorY;
+      }
+      events.unshift({ type: 'move', x: state.x, y: state.y });
+      return events;
     }
 
-    const hand = {
-      active: false,
-      stream: null,
-      video: null,
-      landmarker: null,
-      timer: null,
-      wakeLock: null,
-      debugCanvas: null,
-      state: { mode: 'locked', lastSeen: 0, seenSince: 0, smoothed: null, volume: null }
-    };
+    // --- Application des événements sur la page
+    const airCursorEl = document.createElement('div');
+    airCursorEl.className = 'air-cursor';
+    airCursorEl.hidden = true;
+    document.body.appendChild(airCursorEl);
+
+    const AIR_TARGETS = 'button, input[type="range"], .queue-item, .search-item, .lyric-line, #cover-wrap, a, input[type="text"], select';
+    const air = { hover: null, mode: null, target: null, startX: 0, startY: 0, lastY: 0 };
+
+    function airTargetAt(x, y) {
+      const hit = document.elementFromPoint(x, y);
+      return hit ? hit.closest(AIR_TARGETS) : null;
+    }
+
+    function scrollableAncestor(node) {
+      for (let n = node; n && n !== document.body; n = n.parentElement) {
+        const cs = getComputedStyle(n);
+        if (/(auto|scroll)/.test(cs.overflowY) && n.scrollHeight > n.clientHeight + 2) return n;
+      }
+      return document.scrollingElement;
+    }
+
+    function setRangeFromX(input, x) {
+      const r = input.getBoundingClientRect();
+      const min = +input.min || 0;
+      const max = input.max === '' ? 100 : +input.max;
+      input.value = Math.round(min + clamp01((x - r.left) / r.width) * (max - min));
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function airPointer(type, target, x, y) {
+      target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 77, pointerType: 'touch', isPrimary: true, clientX: x, clientY: y }));
+    }
+
+    function airApply(ev) {
+      if (ev.type === 'hide') {
+        airCursorEl.hidden = true;
+        if (air.hover) air.hover.classList.remove('air-hover');
+        air.hover = null;
+        return;
+      }
+      if (ev.type === 'move') {
+        airCursorEl.hidden = false;
+        airCursorEl.style.transform = 'translate(' + ev.x + 'px, ' + ev.y + 'px)';
+        if (!air.mode) {
+          const t = airTargetAt(ev.x, ev.y);
+          if (t !== air.hover) {
+            if (air.hover) air.hover.classList.remove('air-hover');
+            if (t) t.classList.add('air-hover');
+            air.hover = t;
+          }
+          return;
+        }
+        if (air.mode === 'range') setRangeFromX(air.target, ev.x);
+        else if (air.mode === 'cover') airPointer('pointermove', air.target, ev.x, ev.y);
+        else if (air.mode === 'scroll') { air.target.scrollTop -= ev.y - air.lastY; air.lastY = ev.y; }
+        else if (air.mode === 'press' && Math.abs(ev.y - air.startY) > 30) {
+          // Un appui qui glisse verticalement devient un défilement (listes, page)
+          air.target.classList.remove('air-pressed');
+          air.mode = 'scroll';
+          air.target = scrollableAncestor(air.target);
+          air.lastY = ev.y;
+        }
+        return;
+      }
+      if (ev.type === 'down') {
+        airCursorEl.classList.add('pressed');
+        const t = airTargetAt(ev.x, ev.y);
+        air.startX = ev.x;
+        air.startY = air.lastY = ev.y;
+        if (air.hover) air.hover.classList.remove('air-hover');
+        air.hover = null;
+        if (t && t.matches('input[type="range"]')) {
+          air.mode = 'range';
+          air.target = t;
+          setRangeFromX(t, ev.x);
+        } else if (t && t.id === 'cover-wrap') {
+          air.mode = 'cover';
+          air.target = t;
+          airPointer('pointerdown', t, ev.x, ev.y);
+        } else if (t) {
+          air.mode = 'press';
+          air.target = t;
+          t.classList.add('air-pressed');
+        } else {
+          air.mode = 'scroll';
+          air.target = scrollableAncestor(document.elementFromPoint(ev.x, ev.y));
+        }
+        return;
+      }
+      if (ev.type === 'up') {
+        airCursorEl.classList.remove('pressed');
+        const { mode, target } = air;
+        air.mode = null;
+        air.target = null;
+        if (mode === 'range') {
+          target.dispatchEvent(new Event('change', { bubbles: true }));
+        } else if (mode === 'cover') {
+          airPointer('pointerup', target, ev.x, ev.y);
+        } else if (mode === 'press') {
+          target.classList.remove('air-pressed');
+          const still = airTargetAt(ev.x, ev.y);
+          if (!ev.cancel && still && (still === target || target.contains(still))) {
+            if (target.matches('input[type="text"]')) target.focus();
+            else target.click();
+            vibrate();
+          }
+        }
+      }
+    }
+
+    const hand = { active: false, stream: null, video: null, landmarker: null, timer: null, wakeLock: null, debugCanvas: null, state: newAirState() };
     const handBtn = document.getElementById('hand-btn');
     const HAND_DEBUG = new URLSearchParams(location.search).has('debug');
 
     function setHandUi(mode, detail) {
       handBtn.className = 'btn-hand' + (mode ? ' ' + mode : '');
       const titles = {
-        loading: 'Volume à la main : démarrage de la caméra…',
-        tracking: 'Volume à la main : réglage en cours (pouce-index)',
-        locked: 'Volume à la main : verrouillé (montrez la main pour régler)',
-        error: 'Volume à la main indisponible' + (detail ? ' : ' + detail : '')
+        loading: 'Curseur à la main : démarrage de la caméra…',
+        tracking: 'Curseur à la main : main détectée (pincez pour cliquer)',
+        idle: 'Curseur à la main : montrez la main à la caméra',
+        error: 'Curseur à la main indisponible' + (detail ? ' : ' + detail : '')
       };
-      handBtn.title = titles[mode] || 'Volume à la main (caméra) : écartez ou rapprochez le pouce et l\'index';
+      handBtn.title = titles[mode] || 'Curseur à la main (caméra) : paume pour viser, pincement pour cliquer';
     }
 
     async function loadHandLandmarker() {
@@ -2102,14 +2277,14 @@
 
     function drawHandDebug(landmarks) {
       const c = hand.debugCanvas;
-      if (!c) return;
+      if (!c || !hand.video) return;
       const ctx = c.getContext('2d');
       ctx.drawImage(hand.video, 0, 0, c.width, c.height);
       if (!landmarks) return;
       ctx.fillStyle = '#ff0055';
-      for (const i of [0, 4, 8, 9]) {
+      for (const i of [0, 4, 5, 8, 9, 17]) {
         ctx.beginPath();
-        ctx.arc(landmarks[i].x * c.width, landmarks[i].y * c.height, 4, 0, Math.PI * 2);
+        ctx.arc(landmarks[i].x * c.width, landmarks[i].y * c.height, 3, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.strokeStyle = '#fff';
@@ -2117,6 +2292,14 @@
       ctx.moveTo(landmarks[4].x * c.width, landmarks[4].y * c.height);
       ctx.lineTo(landmarks[8].x * c.width, landmarks[8].y * c.height);
       ctx.stroke();
+    }
+
+    // Traite une image : points de la main (ou null) -> curseur, clics, glisser
+    function airFeed(landmarks, now) {
+      const wasVisible = hand.state.visible;
+      const events = airStep(hand.state, landmarks, now, window.innerWidth, window.innerHeight);
+      events.forEach(airApply);
+      if (hand.state.visible !== wasVisible) setHandUi(hand.state.visible ? 'tracking' : 'idle');
     }
 
     function handTick() {
@@ -2129,19 +2312,12 @@
           landmarks = res.landmarks && res.landmarks[0] ? res.landmarks[0] : null;
         } catch (e) {}
       }
-      const before = hand.state.mode;
-      handVolumeStep(hand.state, landmarks, now);
-      if (hand.state.mode === 'tracking' && hand.state.volume !== null) setGestureVolume(hand.state.volume);
-      if (hand.state.mode !== before) {
-        setHandUi(hand.state.mode);
-        if (hand.state.mode === 'locked') addLog('MAIN', 'Volume verrouillé à ' + el.volume.value + ' %', '#ffbb00');
-        else vibrate();
-      }
+      airFeed(landmarks, now);
       if (HAND_DEBUG) drawHandDebug(landmarks);
       hand.timer = setTimeout(handTick, HAND.FRAME_MS);
     }
 
-    async function startHandVolume() {
+    async function startHandCursor() {
       hand.active = true;
       setHandUi('loading');
       try {
@@ -2150,7 +2326,7 @@
           audio: false
         });
         if (!hand.landmarker) hand.landmarker = await loadHandLandmarker();
-        if (!hand.active) { stopHandVolume(); return; } // désactivé pendant le chargement
+        if (!hand.active) { stopHandCursor(); return; } // désactivé pendant le chargement
         hand.video = document.createElement('video');
         hand.video.muted = true;
         hand.video.playsInline = true;
@@ -2163,22 +2339,24 @@
           hand.debugCanvas.height = 120;
           document.body.appendChild(hand.debugCanvas);
         }
-        hand.state = { mode: 'locked', lastSeen: 0, seenSince: 0, smoothed: null, volume: null };
-        setHandUi('locked');
+        hand.state = newAirState();
+        setHandUi('idle');
         requestWakeLock();
-        addLog('MAIN', 'Volume à la main actif', '#00e676');
+        addLog('MAIN', 'Curseur à la main actif', '#00e676');
         handTick();
       } catch (e) {
         const msg = e && e.name === 'NotAllowedError' ? 'caméra refusée' : (e && e.message ? e.message : 'erreur');
-        addLog('ERR', 'Volume à la main : ' + msg, '#ff3366');
-        stopHandVolume();
+        addLog('ERR', 'Curseur à la main : ' + msg, '#ff3366');
+        stopHandCursor();
         setHandUi('error', msg);
       }
     }
 
-    function stopHandVolume() {
+    function stopHandCursor() {
       hand.active = false;
       clearTimeout(hand.timer);
+      // Un glisser en cours est relâché, le curseur disparaît
+      airFeed(null, Infinity);
       if (hand.stream) hand.stream.getTracks().forEach(t => t.stop());
       hand.stream = null;
       if (hand.video) hand.video.srcObject = null;
@@ -2192,8 +2370,8 @@
 
     handBtn.addEventListener('click', () => {
       vibrate();
-      if (hand.active) stopHandVolume();
-      else startHandVolume();
+      if (hand.active) stopHandCursor();
+      else startHandCursor();
     });
 
     // Le verrou d'écran saute quand la page passe en arrière-plan : on le reprend au retour
@@ -2201,8 +2379,8 @@
       if (document.visibilityState === 'visible' && hand.active) requestWakeLock();
     });
 
-    // Accès pour les tests automatisés
-    window.__handVolume = { step: handVolumeStep, HAND };
+    // Accès pour les tests automatisés : logique pure + injection de mains simulées
+    window.__airCursor = { step: airStep, newState: newAirState, HAND, feed: airFeed, state: () => hand.state };
 
     let lastArt = '';
     let lastQueueHash = '';
