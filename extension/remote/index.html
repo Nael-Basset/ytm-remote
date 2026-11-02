@@ -284,6 +284,55 @@
       height: 4px;
       accent-color: var(--accent);
     }
+    /* Bouton « volume à la main » (caméra) */
+    .btn-hand {
+      flex-shrink: 0;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+    }
+    .btn-hand.loading { color: var(--text); animation: hand-pulse 1s ease-in-out infinite; }
+    .btn-hand.tracking { color: #fff; background: var(--accent); border-color: var(--accent); box-shadow: 0 0 14px var(--accent-glow); }
+    .btn-hand.locked { color: var(--accent); background: rgba(255, 0, 85, 0.14); border-color: rgba(255, 0, 85, 0.4); }
+    .btn-hand.error { color: #ff3344; border-color: rgba(255, 51, 68, 0.5); }
+    @keyframes hand-pulse { 50% { opacity: 0.4; } }
+    /* Glissement vertical sur la pochette : réglage du volume */
+    .cover-wrap { touch-action: none; }
+    /* L'image ne doit ni se « glisser-déposer » ni capter le doigt : le geste est sur le cadre */
+    .cover-wrap .cover-img { pointer-events: none; -webkit-user-drag: none; }
+    .cover-volume {
+      position: absolute;
+      inset: auto 12px 12px 12px;
+      height: 6px;
+      border-radius: 3px;
+      background: rgba(0, 0, 0, 0.45);
+      overflow: hidden;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      pointer-events: none;
+    }
+    .cover-volume.visible { opacity: 1; }
+    .cover-volume-fill { height: 100%; width: 0; background: #fff; }
+    /* Aperçu caméra, uniquement avec ?debug */
+    .hand-debug {
+      position: fixed;
+      left: 8px;
+      bottom: 8px;
+      width: 160px;
+      height: 120px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      z-index: 50;
+      transform: scaleX(-1);
+    }
     /* Section Paroles */
     .lyrics-section {
       width: 100%;
@@ -798,7 +847,8 @@
     </div>
 
     <div class="cover-wrap" id="cover-wrap">
-      <img id="cover" class="cover-img" src="" alt="Album Art">
+      <img id="cover" class="cover-img" src="" alt="Album Art" draggable="false">
+      <div class="cover-volume" id="cover-volume"><div class="cover-volume-fill" id="cover-volume-fill"></div></div>
     </div>
 
     <div class="track-meta">
@@ -849,6 +899,9 @@
     <div class="volume-box">
       <svg viewBox="0 0 24 24" width="18" height="18"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 00-2.5-4.03v8.05A4.5 4.5 0 0016.5 12z"/></svg>
       <input type="range" class="volume-slider" id="volume" min="0" max="100" value="100">
+      <button class="btn-hand" id="hand-btn" title="Volume à la main (caméra) : écartez ou rapprochez le pouce et l'index" aria-label="Volume à la main">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M21 7a1.5 1.5 0 0 0-3 0v4.5h-.5V3.5a1.5 1.5 0 0 0-3 0v8h-.5V2.5a1.5 1.5 0 0 0-3 0v9H10.5V5a1.5 1.5 0 0 0-3 0v10.2l-2.4-2.3a1.6 1.6 0 0 0-2.3 2.2l4.6 5.4A5 5 0 0 0 11.2 22H16a5 5 0 0 0 5-5z"/></svg>
+      </button>
     </div>
 
     <!-- Section Paroles -->
@@ -1883,6 +1936,273 @@
       sendAction('volume', parseInt(el.volume.value, 10));
       isUserVolume = false;
     });
+
+    // ==========================================
+    // Volume au geste (pincement caméra, glissement sur la pochette)
+    // ==========================================
+    // Les gestes produisent un flot de valeurs : on met à jour le curseur tout de suite et on
+    // n'envoie au PC qu'une valeur toutes les 120 ms au plus, sans vibration ni journal.
+    let gestureVolumeTimer = null;
+    let gestureVolumePending = null;
+    let gestureReleaseTimer = null;
+    let lastSentGestureVolume = -1;
+
+    function setGestureVolume(v) {
+      const vol = Math.round(Math.max(0, Math.min(100, v)));
+      el.volume.value = vol;
+      // L'état reçu du PC ne doit pas faire sauter le curseur pendant le geste
+      isUserVolume = true;
+      clearTimeout(gestureReleaseTimer);
+      gestureReleaseTimer = setTimeout(() => { isUserVolume = false; }, 1500);
+      gestureVolumePending = vol;
+      if (gestureVolumeTimer) return;
+      const flush = () => {
+        gestureVolumeTimer = null;
+        if (gestureVolumePending === null || gestureVolumePending === lastSentGestureVolume) return;
+        lastSentGestureVolume = gestureVolumePending;
+        sendP2PMessage({ action: 'volume', value: gestureVolumePending, msgId: 'g-' + Date.now() });
+        gestureVolumePending = null;
+        gestureVolumeTimer = setTimeout(flush, 120);
+      };
+      flush();
+    }
+
+    // --- Glissement vertical sur la pochette : toute la hauteur = 100 %
+    (function setupCoverSwipe() {
+      const wrap = document.getElementById('cover-wrap');
+      const bar = document.getElementById('cover-volume');
+      const fill = document.getElementById('cover-volume-fill');
+      let startY = 0;
+      let startVol = 0;
+      let swiping = false;
+      let pointerId = null;
+      let hideTimer = null;
+
+      const show = (v) => {
+        fill.style.width = v + '%';
+        bar.classList.add('visible');
+        clearTimeout(hideTimer);
+      };
+
+      wrap.addEventListener('pointerdown', (e) => {
+        pointerId = e.pointerId;
+        startY = e.clientY;
+        startVol = parseInt(el.volume.value, 10) || 0;
+        swiping = false;
+      });
+      wrap.addEventListener('pointermove', (e) => {
+        if (e.pointerId !== pointerId) return;
+        const dy = startY - e.clientY;
+        if (!swiping) {
+          if (Math.abs(dy) < 10) return; // simple appui : pas un glissement
+          swiping = true;
+          try { wrap.setPointerCapture(pointerId); } catch (err) {}
+          vibrate();
+        }
+        const v = Math.round(Math.max(0, Math.min(100, startVol + (dy / wrap.clientHeight) * 100)));
+        setGestureVolume(v);
+        show(v);
+      });
+      const end = (e) => {
+        if (e.pointerId !== pointerId) return;
+        pointerId = null;
+        if (swiping) hideTimer = setTimeout(() => bar.classList.remove('visible'), 700);
+        swiping = false;
+      };
+      wrap.addEventListener('pointerup', end);
+      wrap.addEventListener('pointercancel', end);
+    })();
+
+    // --- Pincement devant la caméra (MediaPipe Hand Landmarker, calcul local sur le téléphone)
+    // L'écart pouce-index, rapporté à la taille de la main (poignet -> base du majeur), donne le
+    // volume : indépendant de la distance à la caméra. Main absente = volume verrouillé ; quand
+    // elle revient, il faut la garder visible un court instant avant que le réglage reprenne.
+    const HAND = {
+      MEDIAPIPE: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14',
+      MODEL: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+      PINCH_MIN: 0.25,   // écart relatif considéré comme 0 %
+      PINCH_MAX: 1.15,   // écart relatif considéré comme 100 %
+      LOST_MS: 500,      // main absente depuis plus longtemps -> verrouillé
+      RESUME_MS: 350,    // main visible depuis au moins ce temps -> réglage repris
+      SMOOTHING: 0.35,   // lissage exponentiel du volume
+      FRAME_MS: 66       // ~15 analyses par seconde
+    };
+
+    // Logique pure (testable) : met à jour l'état à partir des points de la main (ou null)
+    function handVolumeStep(state, landmarks, now) {
+      if (!landmarks) {
+        if (state.mode === 'tracking' && now - state.lastSeen > HAND.LOST_MS) state.mode = 'locked';
+        state.seenSince = 0;
+        return state;
+      }
+      state.lastSeen = now;
+      if (!state.seenSince) state.seenSince = now;
+      if (state.mode !== 'tracking') {
+        if (now - state.seenSince < HAND.RESUME_MS) return state;
+        state.mode = 'tracking';
+        state.smoothed = null;
+      }
+      const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+      const size = d(landmarks[0], landmarks[9]);
+      if (size < 0.02) return state; // main trop petite / mal détectée
+      const ratio = d(landmarks[4], landmarks[8]) / size;
+      const target = Math.max(0, Math.min(1, (ratio - HAND.PINCH_MIN) / (HAND.PINCH_MAX - HAND.PINCH_MIN))) * 100;
+      state.smoothed = state.smoothed === null ? target : state.smoothed + (target - state.smoothed) * HAND.SMOOTHING;
+      state.volume = Math.round(state.smoothed);
+      return state;
+    }
+
+    const hand = {
+      active: false,
+      stream: null,
+      video: null,
+      landmarker: null,
+      timer: null,
+      wakeLock: null,
+      debugCanvas: null,
+      state: { mode: 'locked', lastSeen: 0, seenSince: 0, smoothed: null, volume: null }
+    };
+    const handBtn = document.getElementById('hand-btn');
+    const HAND_DEBUG = new URLSearchParams(location.search).has('debug');
+
+    function setHandUi(mode, detail) {
+      handBtn.className = 'btn-hand' + (mode ? ' ' + mode : '');
+      const titles = {
+        loading: 'Volume à la main : démarrage de la caméra…',
+        tracking: 'Volume à la main : réglage en cours (pouce-index)',
+        locked: 'Volume à la main : verrouillé (montrez la main pour régler)',
+        error: 'Volume à la main indisponible' + (detail ? ' : ' + detail : '')
+      };
+      handBtn.title = titles[mode] || 'Volume à la main (caméra) : écartez ou rapprochez le pouce et l\'index';
+    }
+
+    async function loadHandLandmarker() {
+      const vision = await import(HAND.MEDIAPIPE + '/vision_bundle.mjs');
+      const fileset = await vision.FilesetResolver.forVisionTasks(HAND.MEDIAPIPE + '/wasm');
+      const create = (delegate) => vision.HandLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: HAND.MODEL, delegate },
+        runningMode: 'VIDEO',
+        numHands: 1
+      });
+      try {
+        return await create('GPU');
+      } catch (e) {
+        return await create('CPU'); // certains téléphones n'ont pas de WebGL utilisable
+      }
+    }
+
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator && !hand.wakeLock) {
+          hand.wakeLock = await navigator.wakeLock.request('screen');
+          hand.wakeLock.addEventListener('release', () => { hand.wakeLock = null; });
+        }
+      } catch (e) {}
+    }
+
+    function drawHandDebug(landmarks) {
+      const c = hand.debugCanvas;
+      if (!c) return;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(hand.video, 0, 0, c.width, c.height);
+      if (!landmarks) return;
+      ctx.fillStyle = '#ff0055';
+      for (const i of [0, 4, 8, 9]) {
+        ctx.beginPath();
+        ctx.arc(landmarks[i].x * c.width, landmarks[i].y * c.height, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.strokeStyle = '#fff';
+      ctx.beginPath();
+      ctx.moveTo(landmarks[4].x * c.width, landmarks[4].y * c.height);
+      ctx.lineTo(landmarks[8].x * c.width, landmarks[8].y * c.height);
+      ctx.stroke();
+    }
+
+    function handTick() {
+      if (!hand.active) return;
+      const now = performance.now();
+      let landmarks = null;
+      if (hand.video.readyState >= 2) {
+        try {
+          const res = hand.landmarker.detectForVideo(hand.video, now);
+          landmarks = res.landmarks && res.landmarks[0] ? res.landmarks[0] : null;
+        } catch (e) {}
+      }
+      const before = hand.state.mode;
+      handVolumeStep(hand.state, landmarks, now);
+      if (hand.state.mode === 'tracking' && hand.state.volume !== null) setGestureVolume(hand.state.volume);
+      if (hand.state.mode !== before) {
+        setHandUi(hand.state.mode);
+        if (hand.state.mode === 'locked') addLog('MAIN', 'Volume verrouillé à ' + el.volume.value + ' %', '#ffbb00');
+        else vibrate();
+      }
+      if (HAND_DEBUG) drawHandDebug(landmarks);
+      hand.timer = setTimeout(handTick, HAND.FRAME_MS);
+    }
+
+    async function startHandVolume() {
+      hand.active = true;
+      setHandUi('loading');
+      try {
+        hand.stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } },
+          audio: false
+        });
+        if (!hand.landmarker) hand.landmarker = await loadHandLandmarker();
+        if (!hand.active) { stopHandVolume(); return; } // désactivé pendant le chargement
+        hand.video = document.createElement('video');
+        hand.video.muted = true;
+        hand.video.playsInline = true;
+        hand.video.srcObject = hand.stream;
+        await hand.video.play();
+        if (HAND_DEBUG) {
+          hand.debugCanvas = document.createElement('canvas');
+          hand.debugCanvas.className = 'hand-debug';
+          hand.debugCanvas.width = 160;
+          hand.debugCanvas.height = 120;
+          document.body.appendChild(hand.debugCanvas);
+        }
+        hand.state = { mode: 'locked', lastSeen: 0, seenSince: 0, smoothed: null, volume: null };
+        setHandUi('locked');
+        requestWakeLock();
+        addLog('MAIN', 'Volume à la main actif', '#00e676');
+        handTick();
+      } catch (e) {
+        const msg = e && e.name === 'NotAllowedError' ? 'caméra refusée' : (e && e.message ? e.message : 'erreur');
+        addLog('ERR', 'Volume à la main : ' + msg, '#ff3366');
+        stopHandVolume();
+        setHandUi('error', msg);
+      }
+    }
+
+    function stopHandVolume() {
+      hand.active = false;
+      clearTimeout(hand.timer);
+      if (hand.stream) hand.stream.getTracks().forEach(t => t.stop());
+      hand.stream = null;
+      if (hand.video) hand.video.srcObject = null;
+      hand.video = null;
+      if (hand.debugCanvas) hand.debugCanvas.remove();
+      hand.debugCanvas = null;
+      if (hand.wakeLock) hand.wakeLock.release().catch(() => {});
+      hand.wakeLock = null;
+      setHandUi('');
+    }
+
+    handBtn.addEventListener('click', () => {
+      vibrate();
+      if (hand.active) stopHandVolume();
+      else startHandVolume();
+    });
+
+    // Le verrou d'écran saute quand la page passe en arrière-plan : on le reprend au retour
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && hand.active) requestWakeLock();
+    });
+
+    // Accès pour les tests automatisés
+    window.__handVolume = { step: handVolumeStep, HAND };
 
     let lastArt = '';
     let lastQueueHash = '';

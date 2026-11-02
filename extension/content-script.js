@@ -808,8 +808,11 @@
 
     const duration = video ? video.duration || 0 : 0;
     const currentTime = video ? video.currentTime || 0 : 0;
-    const volume = video ? Math.round(video.volume * 100) : 100;
-    const muted = video ? video.muted : false;
+    // Volume du lecteur publié par le pont ; à défaut, celui de l'élément vidéo
+    const root = document.documentElement;
+    const bridgeVolume = root.getAttribute('data-ytm-volume');
+    const volume = bridgeVolume !== null ? +bridgeVolume : (video ? Math.round(video.volume * 100) : 100);
+    const muted = root.getAttribute('data-ytm-muted') !== null ? root.getAttribute('data-ytm-muted') === '1' : (video ? video.muted : false);
     const isPlaying = video ? !video.paused : false;
     const progress = duration ? (currentTime / duration) * 100 : 0;
     const playbackRate = video ? video.playbackRate : 1;
@@ -2385,7 +2388,8 @@
         break;
       case 'get-volume': {
         const video = document.querySelector('video');
-        sendResponse(video ? Math.round(video.volume * 100) : 100);
+        const bridgeVolume = document.documentElement.getAttribute('data-ytm-volume');
+        sendResponse(bridgeVolume !== null ? +bridgeVolume : (video ? Math.round(video.volume * 100) : 100));
         break;
       }
       case 'play-pause':

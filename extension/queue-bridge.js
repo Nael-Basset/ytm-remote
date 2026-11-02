@@ -178,10 +178,22 @@
     } catch (e) {}
   }
 
+  // Volume tel que le lecteur le voit (curseur de YouTube Music). L'élément <video> peut avoir un
+  // volume plus bas, réduit par la normalisation du niveau sonore : ce n'est pas celui à afficher.
+  function syncVolume() {
+    const mp = document.getElementById('movie_player');
+    if (!mp || typeof mp.getVolume !== 'function') return;
+    const root = document.documentElement;
+    root.setAttribute('data-ytm-volume', String(Math.round(mp.getVolume())));
+    root.setAttribute('data-ytm-muted', typeof mp.isMuted === 'function' && mp.isMuted() ? '1' : '0');
+  }
+  document.addEventListener('volumechange', syncVolume, true); // ne remonte pas : écoute en capture
+
   function runSync() {
     syncCurrentTrackData();
     syncDomQueueItems();
     syncGlobalQueue();
+    syncVolume();
   }
 
 
