@@ -2045,34 +2045,81 @@
     const HAND = {
       MEDIAPIPE: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14',
       MODEL: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
-      ZONE_X: [0.2, 0.8],   // portion de l'image (en largeur) qui couvre tout l'écran
-      ZONE_Y: [0.15, 0.75], // idem en hauteur : la main se tient plutôt dans le haut de l'image
-      PINCH_ON: 0.28,       // écart pouce-index / taille de la main : en dessous = pincé
-      PINCH_OFF: 0.42,      // au-dessus = relâché (hystérésis contre les clics parasites)
-      PINCH_FRAMES: 2,      // images consécutives pincées avant d'enfoncer
-      CLICK_LOCK_MS: 180,   // le curseur reste figé au début du pincement (clic précis)
-      READY_MS: 200,        // main visible depuis au moins ce temps avant de pouvoir pincer
-      LOST_MS: 300,         // main absente depuis plus longtemps : curseur masqué, relâché
-      FRAME_MS: 50          // ~20 analyses par seconde
+      // Seule la zone centrale de l'image pilote le curseur : de petits gestes autour du
+      // centre couvrent tout l'écran, et la main reste là où la détection est la meilleure.
+      ZONE_X: [0.3, 0.7],
+      ZONE_Y: [0.25, 0.65],
+      // Filtre « One Euro » : lisse fort à l'arrêt (curseur calme), peu en mouvement rapide
+      FILTER_MIN_CUTOFF: 0.7, // Hz : plus bas = plus stable à l'arrêt
+      FILTER_BETA: 0.004,     // plus haut = plus réactif aux gestes rapides
+      FILTER_D_CUTOFF: 1.0,
+      // Pincement mesuré en vraie 3D (mètres, coordonnées « monde » de MediaPipe) : indépendant
+      // de la distance à la caméra et de l'inclinaison de la main
+      PINCH_ON_M: 0.03,       // pouce-index sous 3 cm : pincé
+      PINCH_OFF_M: 0.05,      // au-dessus de 5 cm : relâché (hystérésis)
+      // Repli sans coordonnées 3D : écart pouce-index / taille de la main dans l'image
+      PINCH_ON: 0.28,
+      PINCH_OFF: 0.42,
+      PRESS_FRAMES: 2,        // images pincées consécutives avant d'enfoncer
+      RELEASE_FRAMES: 2,      // images ouvertes consécutives avant de relâcher (glisser stable)
+      CLICK_LOCK_MS: 180,     // le curseur reste figé au début du pincement (clic précis)
+      READY_MS: 200,          // main visible depuis au moins ce temps avant de pouvoir pincer
+      LOST_MS: 300,           // main absente depuis plus longtemps : curseur masqué, relâché
+      MAGNET: 0.45,           // attraction du curseur vers le centre du bouton survolé
+      MAGNET_MAX_PX: 90,      // seulement pour les petites cibles (boutons, pas les lignes)
+      STICKY_PX: 14,          // le survol tient encore à cette distance hors du bouton
+      FRAME_MS: 33            // repli sans requestVideoFrameCallback : ~30 analyses par seconde
     };
 
     const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
+    // Filtre One Euro (Casiez et al., 2012) pour une coordonnée
+    function oneEuro() {
+      let x = null, dx = 0, last = 0;
+      const alpha = (cutoff, dt) => 1 / (1 + 1 / (2 * Math.PI * cutoff * dt));
+      return {
+        reset() { x = null; dx = 0; },
+        filter(value, now) {
+          if (x === null) { x = value; last = now; return x; }
+          const dt = Math.max(1e-3, (now - last) / 1000);
+          last = now;
+          const rawDx = (value - x) / dt;
+          dx += alpha(HAND.FILTER_D_CUTOFF, dt) * (rawDx - dx);
+          const cutoff = HAND.FILTER_MIN_CUTOFF + HAND.FILTER_BETA * Math.abs(dx);
+          x += alpha(cutoff, dt) * (value - x);
+          return x;
+        }
+      };
+    }
+
     function newAirState() {
-      return { visible: false, x: 0, y: 0, pressed: false, pinchFrames: 0, pressedAt: 0, anchorX: 0, anchorY: 0, seenSince: 0, lastSeen: 0 };
+      return { visible: false, x: 0, y: 0, pressed: false, pinchFrames: 0, openFrames: 0, pressedAt: 0, anchorX: 0, anchorY: 0, seenSince: 0, lastSeen: 0, fx: oneEuro(), fy: oneEuro(), pinch: null };
+    }
+
+    // Mesure du pincement : 0 = doigts collés, 1 = seuil de relâchement atteint.
+    // En 3D (mètres) quand MediaPipe la fournit, sinon rapportée à la taille de la main.
+    function pinchLevel(landmarks, world) {
+      if (world && world[4] && world[8]) {
+        const gap = Math.hypot(world[4].x - world[8].x, world[4].y - world[8].y, world[4].z - world[8].z);
+        return { on: gap < HAND.PINCH_ON_M, off: gap > HAND.PINCH_OFF_M, approach: clamp01((gap - HAND.PINCH_ON_M) / (HAND.PINCH_OFF_M * 1.4 - HAND.PINCH_ON_M)) };
+      }
+      const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+      const ratio = d(landmarks[4], landmarks[8]) / d(landmarks[0], landmarks[9]);
+      return { on: ratio < HAND.PINCH_ON, off: ratio > HAND.PINCH_OFF, approach: clamp01((ratio - HAND.PINCH_ON) / (HAND.PINCH_OFF * 1.4 - HAND.PINCH_ON)) };
     }
 
     // Logique pure (testable) : à partir des points de la main (ou null), met à jour l'état et
     // renvoie les événements à appliquer : move, down, up (cancel si la main est perdue), hide.
-    function airStep(state, landmarks, now, vw, vh) {
+    function airStep(state, landmarks, now, vw, vh, world) {
       const events = [];
-      const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-      const size = landmarks ? d(landmarks[0], landmarks[9]) : 0;
+      const size = landmarks ? Math.hypot(landmarks[0].x - landmarks[9].x, landmarks[0].y - landmarks[9].y) : 0;
       if (!landmarks || size < 0.02) {
         state.seenSince = 0;
         if (state.visible && now - state.lastSeen > HAND.LOST_MS) {
           if (state.pressed) { state.pressed = false; events.push({ type: 'up', x: state.x, y: state.y, cancel: true }); }
           state.visible = false;
+          state.fx.reset();
+          state.fy.reset();
           events.push({ type: 'hide' });
         }
         return events;
@@ -2080,41 +2127,50 @@
       state.lastSeen = now;
       if (!state.seenSince) state.seenSince = now;
 
-      // Centre de la paume, image retournée en miroir (caméra frontale)
-      const pts = [0, 5, 9, 17].map(i => landmarks[i]);
+      // Centre de la paume (poignet et bases des doigts), image retournée en miroir
+      const pts = [0, 5, 9, 13, 17].map(i => landmarks[i]);
       const px = 1 - pts.reduce((s, p) => s + p.x, 0) / pts.length;
       const py = pts.reduce((s, p) => s + p.y, 0) / pts.length;
       const tx = clamp01((px - HAND.ZONE_X[0]) / (HAND.ZONE_X[1] - HAND.ZONE_X[0])) * vw;
       const ty = clamp01((py - HAND.ZONE_Y[0]) / (HAND.ZONE_Y[1] - HAND.ZONE_Y[0])) * vh;
+      const fx = state.fx.filter(tx, now);
+      const fy = state.fy.filter(ty, now);
 
+      const pinch = pinchLevel(landmarks, world);
+      state.pinch = pinch;
       if (!state.visible) {
         state.visible = true;
-        state.x = tx;
-        state.y = ty;
+        state.x = fx;
+        state.y = fy;
+      } else if (state.pressed) {
+        state.x = fx;
+        state.y = fy;
       } else {
-        // Lissage adaptatif : stable quand la main est quasi immobile, réactif quand elle bouge vite
-        const dist = Math.hypot(tx - state.x, ty - state.y);
-        const alpha = Math.max(0.2, Math.min(0.85, 0.2 + dist / 80));
-        state.x += (tx - state.x) * alpha;
-        state.y += (ty - state.y) * alpha;
+        // Doigts qui se rapprochent : le curseur ralentit pour que le clic tombe là où on visait
+        const k = 0.15 + 0.85 * pinch.approach;
+        state.x += (fx - state.x) * k;
+        state.y += (fy - state.y) * k;
       }
 
-      // Pincement avec hystérésis
-      const ratio = d(landmarks[4], landmarks[8]) / size;
+      // Pincement avec hystérésis et confirmation sur plusieurs images
       const ready = now - state.seenSince >= HAND.READY_MS;
       if (!state.pressed) {
-        state.pinchFrames = ratio < HAND.PINCH_ON ? state.pinchFrames + 1 : 0;
-        if (ready && state.pinchFrames >= HAND.PINCH_FRAMES) {
+        state.pinchFrames = pinch.on ? state.pinchFrames + 1 : 0;
+        if (ready && state.pinchFrames >= HAND.PRESS_FRAMES) {
           state.pressed = true;
+          state.openFrames = 0;
           state.pressedAt = now;
           state.anchorX = state.x;
           state.anchorY = state.y;
           events.push({ type: 'down', x: state.x, y: state.y });
         }
-      } else if (ratio > HAND.PINCH_OFF) {
-        state.pressed = false;
-        state.pinchFrames = 0;
-        events.push({ type: 'up', x: state.x, y: state.y, cancel: false });
+      } else {
+        state.openFrames = pinch.off ? state.openFrames + 1 : 0;
+        if (state.openFrames >= HAND.RELEASE_FRAMES) {
+          state.pressed = false;
+          state.pinchFrames = 0;
+          events.push({ type: 'up', x: state.x, y: state.y, cancel: false });
+        }
       }
       // Début de pincement : curseur figé pour que le clic tombe là où on visait
       if (state.pressed && now - state.pressedAt < HAND.CLICK_LOCK_MS) {
@@ -2132,11 +2188,17 @@
     document.body.appendChild(airCursorEl);
 
     const AIR_TARGETS = 'button, input[type="range"], .queue-item, .search-item, .lyric-line, #cover-wrap, a, input[type="text"], select';
-    const air = { hover: null, mode: null, target: null, startX: 0, startY: 0, lastY: 0 };
+    const AIR_MAGNETIC = 'button, a, select';
+    const air = { hover: null, mode: null, target: null, startX: 0, startY: 0, lastY: 0, shownX: 0, shownY: 0 };
 
     function airTargetAt(x, y) {
       const hit = document.elementFromPoint(x, y);
       return hit ? hit.closest(AIR_TARGETS) : null;
+    }
+
+    function insideRect(el, x, y, margin) {
+      const r = el.getBoundingClientRect();
+      return x >= r.left - margin && x <= r.right + margin && y >= r.top - margin && y <= r.bottom + margin;
     }
 
     function scrollableAncestor(node) {
@@ -2159,25 +2221,44 @@
       target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 77, pointerType: 'touch', isPrimary: true, clientX: x, clientY: y }));
     }
 
+    function showCursor(x, y) {
+      air.shownX = x;
+      air.shownY = y;
+      airCursorEl.hidden = false;
+      airCursorEl.style.transform = 'translate(' + x + 'px, ' + y + 'px)';
+    }
+
+    function setHover(t) {
+      if (t === air.hover) return;
+      if (air.hover) air.hover.classList.remove('air-hover');
+      if (t) t.classList.add('air-hover');
+      air.hover = t;
+    }
+
     function airApply(ev) {
       if (ev.type === 'hide') {
         airCursorEl.hidden = true;
-        if (air.hover) air.hover.classList.remove('air-hover');
-        air.hover = null;
+        setHover(null);
         return;
       }
       if (ev.type === 'move') {
-        airCursorEl.hidden = false;
-        airCursorEl.style.transform = 'translate(' + ev.x + 'px, ' + ev.y + 'px)';
         if (!air.mode) {
-          const t = airTargetAt(ev.x, ev.y);
-          if (t !== air.hover) {
-            if (air.hover) air.hover.classList.remove('air-hover');
-            if (t) t.classList.add('air-hover');
-            air.hover = t;
+          // Survol « collant » : on garde la cible tant que le curseur reste près d'elle
+          let t = air.hover && insideRect(air.hover, ev.x, ev.y, HAND.STICKY_PX) ? air.hover : airTargetAt(ev.x, ev.y);
+          setHover(t);
+          // Aimant : le curseur affiché est attiré vers le centre des petits boutons
+          let sx = ev.x, sy = ev.y;
+          if (t && t.matches(AIR_MAGNETIC)) {
+            const r = t.getBoundingClientRect();
+            if (r.width <= HAND.MAGNET_MAX_PX && r.height <= HAND.MAGNET_MAX_PX) {
+              sx += (r.left + r.width / 2 - sx) * HAND.MAGNET;
+              sy += (r.top + r.height / 2 - sy) * HAND.MAGNET;
+            }
           }
+          showCursor(sx, sy);
           return;
         }
+        showCursor(ev.x, ev.y);
         if (air.mode === 'range') setRangeFromX(air.target, ev.x);
         else if (air.mode === 'cover') airPointer('pointermove', air.target, ev.x, ev.y);
         else if (air.mode === 'scroll') { air.target.scrollTop -= ev.y - air.lastY; air.lastY = ev.y; }
@@ -2192,11 +2273,11 @@
       }
       if (ev.type === 'down') {
         airCursorEl.classList.add('pressed');
-        const t = airTargetAt(ev.x, ev.y);
+        // La cible survolée (aimant, survol collant) prime sur le point exact
+        const t = air.hover || airTargetAt(ev.x, ev.y);
         air.startX = ev.x;
         air.startY = air.lastY = ev.y;
-        if (air.hover) air.hover.classList.remove('air-hover');
-        air.hover = null;
+        setHover(null);
         if (t && t.matches('input[type="range"]')) {
           air.mode = 'range';
           air.target = t;
@@ -2226,8 +2307,8 @@
           airPointer('pointerup', target, ev.x, ev.y);
         } else if (mode === 'press') {
           target.classList.remove('air-pressed');
-          const still = airTargetAt(ev.x, ev.y);
-          if (!ev.cancel && still && (still === target || target.contains(still))) {
+          // Tolérance au relâchement : un léger déplacement pendant le pincement ne l'annule pas
+          if (!ev.cancel && insideRect(target, ev.x, ev.y, 20)) {
             if (target.matches('input[type="text"]')) target.focus();
             else target.click();
             vibrate();
@@ -2245,7 +2326,7 @@
       const titles = {
         loading: 'Curseur à la main : démarrage de la caméra…',
         tracking: 'Curseur à la main : main détectée (pincez pour cliquer)',
-        idle: 'Curseur à la main : montrez la main à la caméra',
+        idle: 'Curseur à la main : montrez la main au centre de la caméra',
         error: 'Curseur à la main indisponible' + (detail ? ' : ' + detail : '')
       };
       handBtn.title = titles[mode] || 'Curseur à la main (caméra) : paume pour viser, pincement pour cliquer';
@@ -2257,7 +2338,12 @@
       const create = (delegate) => vision.HandLandmarker.createFromOptions(fileset, {
         baseOptions: { modelAssetPath: HAND.MODEL, delegate },
         runningMode: 'VIDEO',
-        numHands: 1
+        numHands: 1,
+        // Suivi image après image plus tolérant que la première détection : la main ne
+        // « décroche » pas au moindre flou de mouvement, sans accepter de fausses mains
+        minHandDetectionConfidence: 0.6,
+        minHandPresenceConfidence: 0.5,
+        minTrackingConfidence: 0.4
       });
       try {
         return await create('GPU');
@@ -2280,9 +2366,12 @@
       if (!c || !hand.video) return;
       const ctx = c.getContext('2d');
       ctx.drawImage(hand.video, 0, 0, c.width, c.height);
+      // Zone centrale qui pilote le curseur (image non retournée : on retourne les X)
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.strokeRect((1 - HAND.ZONE_X[1]) * c.width, HAND.ZONE_Y[0] * c.height, (HAND.ZONE_X[1] - HAND.ZONE_X[0]) * c.width, (HAND.ZONE_Y[1] - HAND.ZONE_Y[0]) * c.height);
       if (!landmarks) return;
-      ctx.fillStyle = '#ff0055';
-      for (const i of [0, 4, 5, 8, 9, 17]) {
+      ctx.fillStyle = hand.state.pressed ? '#00e676' : '#ff0055';
+      for (const i of [0, 4, 5, 8, 9, 13, 17]) {
         ctx.beginPath();
         ctx.arc(landmarks[i].x * c.width, landmarks[i].y * c.height, 3, 0, Math.PI * 2);
         ctx.fill();
@@ -2295,26 +2384,32 @@
     }
 
     // Traite une image : points de la main (ou null) -> curseur, clics, glisser
-    function airFeed(landmarks, now) {
+    function airFeed(landmarks, now, world) {
       const wasVisible = hand.state.visible;
-      const events = airStep(hand.state, landmarks, now, window.innerWidth, window.innerHeight);
+      const events = airStep(hand.state, landmarks, now, window.innerWidth, window.innerHeight, world);
       events.forEach(airApply);
       if (hand.state.visible !== wasVisible) setHandUi(hand.state.visible ? 'tracking' : 'idle');
     }
 
+    let lastVideoTime = -1;
     function handTick() {
       if (!hand.active) return;
       const now = performance.now();
-      let landmarks = null;
-      if (hand.video.readyState >= 2) {
+      // Une analyse par nouvelle image de la caméra (pas de travail en double sur la même image)
+      if (hand.video.readyState >= 2 && hand.video.currentTime !== lastVideoTime) {
+        lastVideoTime = hand.video.currentTime;
+        let landmarks = null;
+        let world = null;
         try {
           const res = hand.landmarker.detectForVideo(hand.video, now);
           landmarks = res.landmarks && res.landmarks[0] ? res.landmarks[0] : null;
+          world = res.worldLandmarks && res.worldLandmarks[0] ? res.worldLandmarks[0] : null;
         } catch (e) {}
+        airFeed(landmarks, now, world);
+        if (HAND_DEBUG) drawHandDebug(landmarks);
       }
-      airFeed(landmarks, now);
-      if (HAND_DEBUG) drawHandDebug(landmarks);
-      hand.timer = setTimeout(handTick, HAND.FRAME_MS);
+      if (hand.video.requestVideoFrameCallback) hand.video.requestVideoFrameCallback(handTick);
+      else hand.timer = setTimeout(handTick, HAND.FRAME_MS);
     }
 
     async function startHandCursor() {
@@ -2322,7 +2417,7 @@
       setHandUi('loading');
       try {
         hand.stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } },
+          video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } },
           audio: false
         });
         if (!hand.landmarker) hand.landmarker = await loadHandLandmarker();
@@ -2340,6 +2435,7 @@
           document.body.appendChild(hand.debugCanvas);
         }
         hand.state = newAirState();
+        lastVideoTime = -1;
         setHandUi('idle');
         requestWakeLock();
         addLog('MAIN', 'Curseur à la main actif', '#00e676');
@@ -2380,7 +2476,7 @@
     });
 
     // Accès pour les tests automatisés : logique pure + injection de mains simulées
-    window.__airCursor = { step: airStep, newState: newAirState, HAND, feed: airFeed, state: () => hand.state };
+    window.__airCursor = { step: airStep, newState: newAirState, HAND, feed: airFeed, state: () => hand.state, shown: () => ({ x: air.shownX, y: air.shownY }) };
 
     let lastArt = '';
     let lastQueueHash = '';
