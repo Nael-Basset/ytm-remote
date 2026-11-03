@@ -350,8 +350,8 @@
       position: fixed;
       left: 8px;
       bottom: 8px;
-      width: 160px;
-      height: 120px;
+      width: 200px;
+      height: 150px;
       border-radius: 8px;
       border: 1px solid var(--border);
       z-index: 50;
@@ -2053,13 +2053,14 @@
       FILTER_MIN_CUTOFF: 0.7, // Hz : plus bas = plus stable à l'arrêt
       FILTER_BETA: 0.004,     // plus haut = plus réactif aux gestes rapides
       FILTER_D_CUTOFF: 1.0,
-      // Pincement mesuré en vraie 3D (mètres, coordonnées « monde » de MediaPipe) : indépendant
-      // de la distance à la caméra et de l'inclinaison de la main
-      PINCH_ON_M: 0.03,       // pouce-index sous 3 cm : pincé
-      PINCH_OFF_M: 0.05,      // au-dessus de 5 cm : relâché (hystérésis)
-      // Repli sans coordonnées 3D : écart pouce-index / taille de la main dans l'image
-      PINCH_ON: 0.28,
-      PINCH_OFF: 0.42,
+      // Pincement : écart pouce-index / taille de la main (poignet -> base du majeur) dans
+      // l'image. Un seuil absolu en centimètres sur la 3D de MediaPipe s'est révélé trop strict
+      // à l'usage (la 3D estimée ne descend pas toujours sous 3 cm doigts collés).
+      PINCH_ON: 0.30,         // en dessous : pincé
+      PINCH_OFF: 0.42,        // au-dessus : relâché (hystérésis)
+      // La 3D, rapportée à la taille de la main, sert seulement de garde-fou :
+      WORLD_VETO: 0.6,        // doigts nettement écartés en 3D : pas un pincement (main de profil)
+      WORLD_ON: 0.32,         // doigts nettement collés en 3D : pincement même si l'image hésite
       PRESS_FRAMES: 2,        // images pincées consécutives avant d'enfoncer
       RELEASE_FRAMES: 2,      // images ouvertes consécutives avant de relâcher (glisser stable)
       CLICK_LOCK_MS: 180,     // le curseur reste figé au début du pincement (clic précis)
@@ -2096,16 +2097,22 @@
       return { visible: false, x: 0, y: 0, pressed: false, pinchFrames: 0, openFrames: 0, pressedAt: 0, anchorX: 0, anchorY: 0, seenSince: 0, lastSeen: 0, fx: oneEuro(), fy: oneEuro(), pinch: null };
     }
 
-    // Mesure du pincement : 0 = doigts collés, 1 = seuil de relâchement atteint.
-    // En 3D (mètres) quand MediaPipe la fournit, sinon rapportée à la taille de la main.
+    // Mesure du pincement. ratio : écart pouce-index / taille de la main dans l'image (principal).
+    // worldRatio : même rapport en 3D (null si indisponible), utilisé en garde-fou dans les deux sens.
     function pinchLevel(landmarks, world) {
-      if (world && world[4] && world[8]) {
-        const gap = Math.hypot(world[4].x - world[8].x, world[4].y - world[8].y, world[4].z - world[8].z);
-        return { on: gap < HAND.PINCH_ON_M, off: gap > HAND.PINCH_OFF_M, approach: clamp01((gap - HAND.PINCH_ON_M) / (HAND.PINCH_OFF_M * 1.4 - HAND.PINCH_ON_M)) };
-      }
       const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
       const ratio = d(landmarks[4], landmarks[8]) / d(landmarks[0], landmarks[9]);
-      return { on: ratio < HAND.PINCH_ON, off: ratio > HAND.PINCH_OFF, approach: clamp01((ratio - HAND.PINCH_ON) / (HAND.PINCH_OFF * 1.4 - HAND.PINCH_ON)) };
+      let worldRatio = null;
+      if (world && world[0] && world[4] && world[8] && world[9]) {
+        const d3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+        const palm = d3(world[0], world[9]);
+        if (palm > 0.02) worldRatio = d3(world[4], world[8]) / palm;
+      }
+      let on = ratio < HAND.PINCH_ON;
+      if (on && worldRatio !== null && worldRatio > HAND.WORLD_VETO) on = false;  // main de profil
+      if (!on && worldRatio !== null && worldRatio < HAND.WORLD_ON) on = true;     // l'image hésite
+      const off = ratio > HAND.PINCH_OFF && !(worldRatio !== null && worldRatio < HAND.WORLD_ON);
+      return { on, off, ratio, worldRatio, approach: clamp01((ratio - HAND.PINCH_ON) / (HAND.PINCH_OFF * 1.4 - HAND.PINCH_ON)) };
     }
 
     // Logique pure (testable) : à partir des points de la main (ou null), met à jour l'état et
@@ -2381,6 +2388,19 @@
       ctx.moveTo(landmarks[4].x * c.width, landmarks[4].y * c.height);
       ctx.lineTo(landmarks[8].x * c.width, landmarks[8].y * c.height);
       ctx.stroke();
+      // Mesures (texte remis à l'endroit : le canvas est affiché en miroir)
+      const p = hand.state.pinch;
+      if (p) {
+        ctx.save();
+        ctx.scale(-1, 1);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.fillRect(-c.width, 0, c.width, 30);
+        ctx.fillStyle = '#fff';
+        ctx.font = '11px monospace';
+        ctx.fillText('2D ' + p.ratio.toFixed(2) + ' (pincé < ' + HAND.PINCH_ON + ')', -c.width + 4, 12);
+        ctx.fillText('3D ' + (p.worldRatio === null ? '—' : p.worldRatio.toFixed(2)) + (hand.state.pressed ? '  APPUI' : ''), -c.width + 4, 25);
+        ctx.restore();
+      }
     }
 
     // Traite une image : points de la main (ou null) -> curseur, clics, glisser
@@ -2430,8 +2450,8 @@
         if (HAND_DEBUG) {
           hand.debugCanvas = document.createElement('canvas');
           hand.debugCanvas.className = 'hand-debug';
-          hand.debugCanvas.width = 160;
-          hand.debugCanvas.height = 120;
+          hand.debugCanvas.width = 200;
+          hand.debugCanvas.height = 150;
           document.body.appendChild(hand.debugCanvas);
         }
         hand.state = newAirState();
