@@ -3,138 +3,144 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#0c0d11" media="(prefers-color-scheme: dark)">
-  <meta name="theme-color" content="#f3f4f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d0d10" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f2f2f5" media="(prefers-color-scheme: light)">
   <title>YouTube Music Remote</title>
   <style>
+    /* Télécommande. Direction : posée, tactile, à portée de pouce. Un salon le soir, une chaîne
+       hi-fi : commandes sobres, la pochette seule source de couleur, le voyant de l'appareil piloté
+       comme signature. Grille de 4 px ; tailles 11 / 13 / 17 / 22 ; graisses 400 à 600.
+       Mise en page : le lecteur tient sur un écran ; barre d'outils translucide en bas ; paroles et
+       file d'attente dans des panneaux qu'on tire du bas. */
     :root {
       color-scheme: dark;
-      --fg-rgb: 255 255 255;
-      --bg-rgb: 12 13 17;
+      --fg-rgb: 245 245 247;
+      --bg-rgb: 13 13 16;
       --shade-rgb: 0 0 0;
       --bg: rgb(var(--bg-rgb));
-      --surface: #181a20;
-      --card-bg: rgba(22, 24, 31, 0.72);
-      --panel-bg: rgba(18, 20, 26, 0.8);
-      --card-hover: rgb(var(--fg-rgb) / 0.08);
-      --accent: #ff0055;
-      --accent-glow: rgba(255, 0, 85, 0.35);
+      --surface: #1b1b20;
       --text: rgb(var(--fg-rgb));
-      --text-dim: rgb(var(--fg-rgb) / 0.65);
-      --border: rgb(var(--fg-rgb) / 0.1);
-      --cover-shadow: 0 12px 36px rgba(0, 0, 0, 0.75);
-      --ambient-filter: blur(50px) saturate(2.4) brightness(0.5);
+      --text-dim: rgb(var(--fg-rgb) / 0.62);
+      --text-muted: rgb(var(--fg-rgb) / 0.38);
+      --track: rgb(var(--fg-rgb) / 0.16);
+      --fill: rgb(var(--fg-rgb) / 0.86);
+      --border: rgb(var(--fg-rgb) / 0.08);
+      --card-hover: rgb(var(--fg-rgb) / 0.08);
+      --accent: #ff2d6a;
+      --accent-soft: rgba(255, 45, 106, 0.14);
+      --ok: #30d158;
+      --wait: #d9a441;
+      --bad: #e5544b;
+      --material: rgba(30, 30, 36, 0.66);
+      --material-edge: rgba(255, 255, 255, 0.08);
+      --scrim: rgba(0, 0, 0, 0.5);
+      --cover-shadow: 0 16px 44px rgba(0, 0, 0, 0.55);
+      --ambient-opacity: 0.35;
+      --ease: cubic-bezier(0.2, 0, 0, 1);
     }
-    /* Thème clair : suit le réglage du téléphone */
     @media (prefers-color-scheme: light) {
       :root {
         color-scheme: light;
-        --fg-rgb: 22 24 30;
-        --bg-rgb: 243 244 247;
+        --fg-rgb: 18 18 22;
+        --bg-rgb: 242 242 245;
         --shade-rgb: 255 255 255;
-        --surface: #e4e6ec;
-        --card-bg: rgba(255, 255, 255, 0.72);
-        --panel-bg: rgba(255, 255, 255, 0.7);
-        --text-dim: rgb(var(--fg-rgb) / 0.6);
-        --border: rgb(var(--fg-rgb) / 0.12);
-        --cover-shadow: 0 12px 30px rgba(20, 22, 30, 0.25);
-        --ambient-filter: blur(50px) saturate(1.6) brightness(1.15);
+        --surface: #ffffff;
+        --text-dim: rgb(var(--fg-rgb) / 0.62);
+        --text-muted: rgb(var(--fg-rgb) / 0.4);
+        --track: rgb(var(--fg-rgb) / 0.14);
+        --fill: rgb(var(--fg-rgb) / 0.78);
+        --border: rgb(var(--fg-rgb) / 0.08);
+        --accent: #d6004a;
+        --accent-soft: rgba(214, 0, 74, 0.1);
+        --ok: #1f9d50;
+        --wait: #a8741a;
+        --bad: #c4372e;
+        --material: rgba(246, 246, 249, 0.72);
+        --material-edge: rgba(255, 255, 255, 0.7);
+        --scrim: rgba(0, 0, 0, 0.28);
+        --cover-shadow: 0 16px 40px rgba(20, 20, 30, 0.22);
+        --ambient-opacity: 0.3;
       }
     }
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      -webkit-tap-highlight-color: transparent;
-      user-select: none;
-    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; user-select: none; }
+    html, body { height: 100%; }
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 12px 14px calc(24px + env(safe-area-inset-bottom, 20px));
-      overflow-x: hidden;
-      overflow-y: auto;
+      font: 100%/1.4 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
     }
-    /* Fond dynamique flouté */
+    button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+    button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
+    svg { display: block; fill: currentColor; }
+
+    /* Fond : la pochette très floutée teinte la pièce sans distraire */
     .ambient-bg {
       position: fixed;
-      inset: -40px;
+      inset: -20%;
       background-size: cover;
       background-position: center;
-      filter: var(--ambient-filter);
-      opacity: 0.85;
-      transform: scale(1.2);
-      transition: background-image 0.5s ease;
+      filter: blur(60px) saturate(1.4);
+      opacity: var(--ambient-opacity);
       z-index: 0;
       pointer-events: none;
+      transition: background-image 0.5s var(--ease);
     }
-    .ambient-overlay {
-      position: fixed;
-      inset: 0;
-      background: radial-gradient(circle at 50% 30%, rgb(var(--bg-rgb) / 0.3) 0%, rgb(var(--bg-rgb) / 0.92) 100%);
-      z-index: 1;
-      pointer-events: none;
-    }
-    .content {
+    .ambient-overlay { display: none; }
+
+    /* Lecteur : une colonne qui tient sur un écran */
+    .player {
       position: relative;
-      z-index: 2;
-      width: 100%;
-      max-width: 440px;
+      z-index: 1;
+      height: 100%;
+      max-width: 480px;
+      margin: 0 auto;
       display: flex;
       flex-direction: column;
-      align-items: center;
+      gap: 16px;
+      padding: calc(env(safe-area-inset-top, 0px) + 8px) max(20px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 84px) max(20px, env(safe-area-inset-left, 0px));
     }
-    /* Barre de statut P2P WebRTC */
-    .status-bar {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      font-size: 11.5px;
+
+    /* En-tête : l'appareil piloté et son voyant (signature), outil caméra à droite */
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+    .device { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 0.8125rem; font-weight: 500; color: var(--text-dim); }
+    .device span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--wait); flex: none; transition: background-color 0.3s var(--ease); }
+    .status-dot.connected { background: var(--ok); }
+    .status-dot.disconnected { background: var(--bad); }
+
+    .btn-icon, .btn-hand {
+      width: 44px;
+      height: 44px;
+      border-radius: 22px;
+      display: grid;
+      place-items: center;
       color: var(--text-dim);
-      background: rgb(var(--shade-rgb) / 0.35);
-      border: 1px solid var(--border);
-      padding: 4px 12px;
-      border-radius: 20px;
-      margin-bottom: 8px;
-      backdrop-filter: blur(10px);
+      flex: none;
+      transition: color 0.15s var(--ease), background-color 0.15s var(--ease);
     }
-    .status-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #ffaa00;
-      box-shadow: 0 0 8px #ffaa00;
-      transition: all 0.3s ease;
-    }
-    .status-dot.connected {
-      background: #00ff88;
-      box-shadow: 0 0 8px #00ff88;
-    }
-    .status-dot.disconnected {
-      background: #ff3344;
-      box-shadow: 0 0 8px #ff3344;
-    }
-    /* Pochette */
+    .btn-icon svg, .btn-hand svg { width: 24px; height: 24px; }
+    .btn-icon:active, .btn-hand:active { background: var(--track); }
+    .btn-icon.active { color: var(--accent); }
+    .btn-hand.loading { color: var(--text); animation: hand-wait 1.2s ease-in-out infinite; }
+    .btn-hand.tracking { color: var(--accent); background: var(--accent-soft); }
+    .btn-hand.idle { color: var(--accent); }
+    .btn-hand.error { color: var(--bad); }
+    @keyframes hand-wait { 50% { opacity: 0.45; } }
+
+    /* Pochette : entière sur un fond flouté d'elle-même ; glisser verticalement règle le volume */
+    .cover-area { flex: 1; min-height: 0; display: grid; place-items: center; }
     .cover-wrap {
       position: relative;
-      width: min(65vw, 240px);
-      height: min(65vw, 240px);
+      width: min(100%, 46vh, 340px);
+      aspect-ratio: 1;
       border-radius: 16px;
       overflow: hidden;
-      box-shadow: var(--cover-shadow);
       background: var(--surface);
-      margin: 6px 0 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
+      box-shadow: var(--cover-shadow);
+      touch-action: none;
     }
-    /* Pochette entière (les clips sont en 16:9) sur un fond flouté de la même image */
     .cover-wrap::before {
       content: "";
       position: absolute;
@@ -142,166 +148,216 @@
       background: var(--art, none) center / cover no-repeat;
       filter: blur(18px) brightness(0.7);
     }
-    .cover-img {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-    }
-    .cover-img:not([src]), .cover-img[src=""] {
-      visibility: hidden;
-    }
-    /* Métadonnées */
-    .track-meta {
-      width: 100%;
-      text-align: center;
-      margin-bottom: 12px;
-    }
-    .title {
-      font-size: 19px;
-      font-weight: 800;
-      color: var(--text);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      line-height: 1.3;
-      padding: 0 4px;
-    }
-    .artist {
-      font-size: 14px;
-      color: var(--text-dim);
-      margin-top: 4px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      padding: 0 4px;
-    }
-    /* Progression */
-    .progress-box {
-      width: 100%;
-      margin-bottom: 12px;
-    }
-    .progress-slider {
-      width: 100%;
-      height: 6px;
-      accent-color: var(--accent);
-      cursor: pointer;
-    }
-    .time-row {
-      display: flex;
-      justify-content: space-between;
-      font-size: 11px;
-      color: var(--text-dim);
-      margin-top: 4px;
-      font-variant-numeric: tabular-nums;
-    }
-    /* Commandes principales */
-    .controls-main {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: space-evenly;
-      margin-bottom: 14px;
-    }
-    .btn-nav {
-      background: transparent;
-      border: none;
-      color: var(--text);
-      cursor: pointer;
-      width: 50px;
-      height: 50px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: transform 0.1s ease;
-    }
-    .btn-nav:active {
-      transform: scale(0.9);
-      background: rgb(var(--fg-rgb) / 0.1);
-    }
-    .btn-play {
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      width: 66px;
-      height: 66px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 4px 20px var(--accent-glow);
-      cursor: pointer;
-      transition: transform 0.1s ease;
-    }
-    .btn-play:active {
-      transform: scale(0.92);
-    }
-    /* Commandes secondaires */
-    .controls-sec {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: space-around;
-      margin-bottom: 12px;
-      padding: 0 10px;
-    }
-    .btn-tgl {
-      background: transparent;
-      border: none;
-      color: var(--text-dim);
-      cursor: pointer;
-      padding: 8px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: color 0.15s ease, transform 0.1s ease;
-    }
-    .btn-tgl:active {
-      transform: scale(0.9);
-    }
-    .btn-tgl.active {
-      color: var(--accent);
-      background: rgba(255, 0, 85, 0.14);
-      box-shadow: inset 0 0 0 1px rgba(255, 0, 85, 0.35);
-    }
-    /* Barre Volume */
-    .volume-box {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 8px 14px;
-      background: var(--card-bg);
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      backdrop-filter: blur(12px);
-      margin-bottom: 16px;
-    }
-    .volume-slider {
-      flex: 1;
+    .cover-img { position: relative; width: 100%; height: 100%; object-fit: contain; pointer-events: none; -webkit-user-drag: none; }
+    .cover-img:not([src]), .cover-img[src=""] { visibility: hidden; }
+    .cover-volume {
+      position: absolute;
+      inset: auto 12px 12px 12px;
       height: 4px;
-      accent-color: var(--accent);
+      border-radius: 2px;
+      background: rgba(0, 0, 0, 0.45);
+      overflow: hidden;
+      opacity: 0;
+      transition: opacity 0.2s var(--ease);
+      pointer-events: none;
     }
-    /* Bouton « volume à la main » (caméra) */
-    .btn-hand {
-      flex-shrink: 0;
-      width: 34px;
-      height: 34px;
-      border-radius: 50%;
-      border: 1px solid var(--border);
+    .cover-volume.visible { opacity: 1; }
+    .cover-volume-fill { height: 100%; width: 0; background: #fff; }
+
+    /* Titre et avis */
+    .meta { display: flex; align-items: center; gap: 4px; }
+    .meta-text { flex: 1; min-width: 0; }
+    .title { font-size: 1.375rem; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .artist { font-size: 1.0625rem; color: var(--text-dim); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Curseurs : piste fine au repos, épaisse sous le doigt ; remplissage piloté par --p */
+    .range {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 32px;
       background: transparent;
-      color: var(--text-dim);
+      cursor: pointer;
+      touch-action: none;
+      --p: 0%;
+      --h: 4px;
+    }
+    .range.is-active { --h: 12px; }
+    .range::-webkit-slider-runnable-track {
+      height: var(--h);
+      border-radius: calc(var(--h) / 2);
+      background: linear-gradient(to right, var(--fill) var(--p), var(--track) var(--p));
+      transition: height 0.16s var(--ease);
+    }
+    .range::-webkit-slider-thumb { -webkit-appearance: none; width: 1px; height: var(--h); opacity: 0; }
+    .range::-moz-range-track { height: var(--h); border-radius: calc(var(--h) / 2); background: var(--track); }
+    .range::-moz-range-progress { height: var(--h); border-radius: calc(var(--h) / 2); background: var(--fill); }
+    .range::-moz-range-thumb { width: 1px; height: var(--h); border: 0; opacity: 0; }
+    .times { display: flex; justify-content: space-between; margin-top: -4px; font-size: 0.8125rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+    /* Transport : gros glyphes, sans halo, retour immédiat à l'appui */
+    .transport { display: flex; align-items: center; justify-content: space-evenly; }
+    .btn-nav, .btn-play {
+      width: 72px;
+      height: 72px;
+      border-radius: 36px;
+      display: grid;
+      place-items: center;
+      transition: transform 0.1s var(--ease), background-color 0.1s var(--ease);
+    }
+    .btn-nav:active, .btn-play:active { transform: scale(0.9); background: var(--track); }
+    .btn-nav svg { width: 36px; height: 36px; }
+    .btn-play svg { width: 52px; height: 52px; }
+
+    /* Volume : bornes explicites */
+    .volume-box { display: flex; align-items: center; gap: 12px; color: var(--text-muted); }
+    .volume-box svg { width: 18px; height: 18px; flex: none; }
+
+    /* Barre d'outils translucide : la seule couche de verre de l'écran */
+    .toolbar {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 5;
       display: flex;
+      justify-content: space-around;
+      padding: 8px max(12px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 8px) max(12px, env(safe-area-inset-left, 0px));
+      background: var(--material);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      border-top: 1px solid var(--material-edge);
+    }
+    .tool {
+      min-width: 64px;
+      height: 56px;
+      display: grid;
+      justify-items: center;
+      align-content: center;
+      gap: 4px;
+      border-radius: 12px;
+      color: var(--text-dim);
+      font-size: 0.6875rem;
+      font-weight: 500;
+      transition: color 0.15s var(--ease), background-color 0.15s var(--ease);
+    }
+    .tool svg { width: 24px; height: 24px; }
+    .tool.active { color: var(--accent); }
+    .tool:active { background: var(--track); }
+
+    /* Panneaux tirables (paroles, file d'attente) */
+    .sheet-scrim { position: fixed; inset: 0; z-index: 6; background: var(--scrim); opacity: 0; pointer-events: none; }
+    .sheet {
+      position: fixed;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 100%;
+      z-index: 7;
+      display: flex;
+      flex-direction: column;
+      background: var(--surface);
+      border-radius: 16px 16px 0 0;
+      box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.25);
+      transform: translateY(110%);
+      will-change: transform;
+    }
+    .sheet-head { flex: none; padding: 8px max(20px, env(safe-area-inset-right, 0px)) 12px max(20px, env(safe-area-inset-left, 0px)); touch-action: none; cursor: grab; }
+    .grabber { width: 36px; height: 4px; border-radius: 2px; background: var(--text-muted); margin: 0 auto 12px; }
+    .sheet-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+    .sheet-title h2 { font-size: 1.0625rem; font-weight: 600; }
+    .sheet-actions { display: flex; align-items: center; gap: 4px; }
+    .sheet-body {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      overscroll-behavior: contain;
+      padding: 0 max(12px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 24px) max(12px, env(safe-area-inset-left, 0px));
+    }
+    .queue-count { font-size: 0.8125rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    .queue-count::after { content: " titres"; }
+
+    /* Paroles */
+    .lyrics-scroll { scroll-behavior: smooth; }
+    .lyrics-status { font-size: 0.8125rem; color: var(--text-dim); text-align: center; padding: 24px 12px; line-height: 1.5; }
+    .lyrics-list { display: flex; flex-direction: column; gap: 4px; padding: 4px 0 24px; min-width: 0; }
+    .lyric-line {
+      font-size: 1.375rem;
+      font-weight: 600;
+      line-height: 1.35;
+      padding: 8px 8px;
+      border-radius: 12px;
+      cursor: pointer;
+      opacity: 0.4;
+      min-width: 0;           /* les lignes longues passent à la ligne dans la largeur du panneau */
+      overflow-wrap: anywhere;
+      transition: opacity 0.3s var(--ease), background-color 0.25s var(--ease);
+    }
+    .lyric-line:active { background: var(--card-hover); }
+    .lyric-line.active { opacity: 1; }
+    .lyric-line.past-line { opacity: 0.55; }
+    .lyric-line.past-line .lyric-word { color: rgb(var(--fg-rgb) / 0.72); -webkit-text-fill-color: rgb(var(--fg-rgb) / 0.72); }
+    /* Mot par mot : le mot chanté se remplit de gauche à droite (--prog), sans halo */
+    .lyric-word { display: inline-block; white-space: pre; color: rgb(var(--fg-rgb) / 0.3); -webkit-text-fill-color: rgb(var(--fg-rgb) / 0.3); transition: color 0.12s var(--ease); }
+    .lyric-word.future { color: rgb(var(--fg-rgb) / 0.3); -webkit-text-fill-color: rgb(var(--fg-rgb) / 0.3); }
+    .lyric-word.singing {
+      background: linear-gradient(90deg, rgb(var(--fg-rgb)) var(--prog, 0%), rgb(var(--fg-rgb) / 0.3) var(--prog, 0%));
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .lyric-word.past { background: none; color: rgb(var(--fg-rgb)); -webkit-text-fill-color: rgb(var(--fg-rgb)); }
+    /* « Plein écran » : le panneau occupe tout l'écran, texte plus grand, mini transport en bas */
+    .sheet.is-fullscreen { transform: none !important; border-radius: 0; z-index: 9; }
+    .sheet.is-fullscreen .lyric-line { font-size: 1.75rem; padding: 8px 12px; }
+    .lyrics-fullscreen-controls { display: none; }
+    .sheet.is-fullscreen .lyrics-fullscreen-controls {
+      display: flex;
+      flex: none;
       align-items: center;
       justify-content: center;
-      cursor: pointer;
-      transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+      gap: 28px;
+      padding: 8px 0 calc(env(safe-area-inset-bottom, 0px) + 12px);
+      border-top: 1px solid var(--border);
     }
-    .btn-hand.loading { color: var(--text); animation: hand-pulse 1s ease-in-out infinite; }
-    .btn-hand.tracking { color: #fff; background: var(--accent); border-color: var(--accent); box-shadow: 0 0 14px var(--accent-glow); }
-    .btn-hand.idle { color: var(--accent); background: rgba(255, 0, 85, 0.14); border-color: rgba(255, 0, 85, 0.4); }
+    .btn-fs-nav, .btn-fs-play { width: 56px; height: 56px; border-radius: 28px; display: grid; place-items: center; }
+    .btn-fs-nav svg { width: 28px; height: 28px; }
+    .btn-fs-play svg { width: 36px; height: 36px; }
+    .btn-fs-nav:active, .btn-fs-play:active { background: var(--track); }
+
+    /* Recherche */
+    .search-panel { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; }
+    .search-input-wrap { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border-radius: 10px; background: var(--track); transition: box-shadow 0.15s var(--ease); }
+    .search-input-wrap:focus-within { box-shadow: inset 0 0 0 1px var(--accent); }
+    .search-icon { width: 18px; height: 18px; flex: none; color: var(--text-muted); }
+    .search-input { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; color: var(--text); font: 400 1.0625rem/1.2 inherit; user-select: text; }
+    .search-input::placeholder { color: var(--text-muted); }
+    .search-clear-btn { width: 24px; height: 24px; border-radius: 12px; display: grid; place-items: center; background: var(--track); color: var(--text-dim); font-size: 0.6875rem; }
+    .search-status { font-size: 0.8125rem; color: var(--text-dim); text-align: center; padding: 8px; }
+    .search-results-list { display: flex; flex-direction: column; gap: 4px; }
+    .search-item { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 10px; transition: background-color 0.15s var(--ease); }
+    .search-item:active { background: var(--card-hover); }
+    .search-thumb { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; flex: none; background: var(--track); }
+    .search-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .search-title { font-size: 1.0625rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .search-artist { font-size: 0.8125rem; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .search-actions { display: flex; align-items: center; gap: 4px; flex: none; }
+    .btn-search-act { width: 44px; height: 44px; border-radius: 22px; display: grid; place-items: center; color: var(--text-dim); transition: color 0.15s var(--ease), background-color 0.15s var(--ease); }
+    .btn-search-act:active { background: var(--track); }
+    .btn-search-act.added { color: var(--ok); }
+
+    /* File d'attente */
+    .queue-list { display: flex; flex-direction: column; gap: 4px; }
+    .queue-item { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 8px; border-radius: 10px; cursor: pointer; transition: background-color 0.15s var(--ease); }
+    .queue-item:active { background: var(--card-hover); }
+    .queue-thumb { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; flex: none; background: var(--track); }
+    .queue-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .queue-title { font-size: 1.0625rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .queue-item.current .queue-title { color: var(--accent); font-weight: 500; }
+    .queue-artist { font-size: 0.8125rem; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .queue-duration { font-size: 0.8125rem; color: var(--text-muted); font-variant-numeric: tabular-nums; flex: none; }
+
     /* Curseur piloté à la main */
     .air-cursor {
       position: fixed;
@@ -311,551 +367,26 @@
       height: 32px;
       border-radius: 50%;
       border: 3px solid #fff;
-      background: rgba(255, 0, 85, 0.25);
-      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 4px 14px rgba(0, 0, 0, 0.4);
+      background: rgba(255, 255, 255, 0.2);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.4);
       pointer-events: none;
       z-index: 1000;
-      transition: width 0.1s ease, height 0.1s ease, left 0.1s ease, top 0.1s ease, background 0.1s ease;
+      transition: width 0.1s var(--ease), height 0.1s var(--ease), left 0.1s var(--ease), top 0.1s var(--ease), background-color 0.1s var(--ease);
     }
-    .air-cursor.pressed {
-      left: -11px;
-      top: -11px;
-      width: 22px;
-      height: 22px;
-      background: var(--accent);
-    }
-    .air-hover { outline: 2px solid var(--accent); outline-offset: 3px; }
+    .air-cursor.pressed { left: -12px; top: -12px; width: 24px; height: 24px; background: var(--accent); }
+    .air-hover { outline: 2px solid var(--accent); outline-offset: 2px; }
     .air-pressed { transform: scale(0.94); }
-    .btn-hand.error { color: #ff3344; border-color: rgba(255, 51, 68, 0.5); }
-    @keyframes hand-pulse { 50% { opacity: 0.4; } }
-    /* Glissement vertical sur la pochette : réglage du volume */
-    .cover-wrap { touch-action: none; }
-    /* L'image ne doit ni se « glisser-déposer » ni capter le doigt : le geste est sur le cadre */
-    .cover-wrap .cover-img { pointer-events: none; -webkit-user-drag: none; }
-    .cover-volume {
-      position: absolute;
-      inset: auto 12px 12px 12px;
-      height: 6px;
-      border-radius: 3px;
-      background: rgba(0, 0, 0, 0.45);
-      overflow: hidden;
-      opacity: 0;
-      transition: opacity 0.2s ease;
-      pointer-events: none;
-    }
-    .cover-volume.visible { opacity: 1; }
-    .cover-volume-fill { height: 100%; width: 0; background: #fff; }
     /* Aperçu caméra, uniquement avec ?debug */
-    .hand-debug {
-      position: fixed;
-      left: 8px;
-      bottom: 8px;
-      width: 200px;
-      height: 150px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      z-index: 50;
-      transform: scaleX(-1);
-    }
-    /* Section Paroles */
-    .lyrics-section {
-      width: 100%;
-      background: var(--panel-bg);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 14px;
-      backdrop-filter: blur(16px);
-      margin-bottom: 16px;
-      box-sizing: border-box;
-      transition: all 0.25s ease;
-    }
-    .lyrics-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 10px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--border);
-    }
-    .lyrics-title-group {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .lyrics-title-text {
-      font-size: 13px;
-      font-weight: 800;
-      letter-spacing: 0.5px;
-      color: var(--text-dim);
-    }
-    .btn-fullscreen-lyrics {
-      background: rgb(var(--fg-rgb) / 0.08);
-      border: 1px solid rgb(var(--fg-rgb) / 0.12);
-      color: var(--text);
-      cursor: pointer;
-      width: 34px;
-      height: 34px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: background 0.15s ease, transform 0.1s ease;
-    }
-    .btn-fullscreen-lyrics:active {
-      transform: scale(0.92);
-      background: rgb(var(--fg-rgb) / 0.2);
-    }
-    .lyrics-scroll {
-      max-height: 360px;
-      overflow-y: auto;
-      scroll-behavior: smooth;
-      -webkit-overflow-scrolling: touch;
-      padding-right: 4px;
-    }
-    .lyrics-status {
-      font-size: 13px;
-      color: var(--text-dim);
-      text-align: center;
-      padding: 24px 10px;
-      line-height: 1.5;
-    }
-    .lyrics-list {
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-      padding: 12px 0;
-    }
-    .lyric-line {
-      font-size: 18px;
-      font-weight: 700;
-      line-height: 1.45;
-      padding: 6px 10px;
-      border-radius: 10px;
-      cursor: pointer;
-      opacity: 0.32;
-      filter: blur(0.2px);
-      transition: opacity 0.3s ease, filter 0.3s ease, background 0.25s ease;
-    }
-    .lyric-line:active {
-      background: rgb(var(--fg-rgb) / 0.06);
-    }
-    .lyric-line.active {
-      opacity: 1;
-      filter: none;
-      font-size: 18px;
-      font-weight: 800;
-      background: rgb(var(--fg-rgb) / 0.04);
-    }
-    .lyric-line.past-line {
-      opacity: 0.55;
-      filter: none;
-    }
-    .lyric-line.past-line .lyric-word {
-      color: rgb(var(--fg-rgb) / 0.72);
-      -webkit-text-fill-color: rgb(var(--fg-rgb) / 0.72);
-    }
+    .hand-debug { position: fixed; left: 8px; bottom: 96px; width: 200px; height: 152px; border-radius: 8px; border: 1px solid var(--border); z-index: 50; transform: scaleX(-1); }
+    .logs-card { margin: 12px 8px 0; }
 
-    /* Animation mot par mot au fur et à mesure de la prononciation (Style BetterLyrics sans grossissement) */
-    .lyric-word {
-      display: inline-block;
-      white-space: pre;
-      color: rgb(var(--fg-rgb) / 0.3);
-      -webkit-text-fill-color: rgb(var(--fg-rgb) / 0.3);
-      transition: color 0.12s ease, filter 0.18s ease;
+    @media (prefers-reduced-motion: reduce) {
+      .range::-webkit-slider-runnable-track, .btn-nav, .btn-play, .lyric-line { transition: none; }
+      .btn-hand.loading { animation: none; }
     }
-    .lyric-word.future {
-      color: rgb(var(--fg-rgb) / 0.3);
-      -webkit-text-fill-color: rgb(var(--fg-rgb) / 0.3);
-      filter: none;
-    }
-    .lyric-word.singing {
-      background: linear-gradient(90deg, rgb(var(--fg-rgb)) var(--prog, 0%), rgb(var(--fg-rgb) / 0.3) var(--prog, 0%));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      filter: drop-shadow(0 0 10px rgb(var(--fg-rgb) / 0.75)) drop-shadow(0 0 20px rgb(var(--fg-rgb) / 0.3));
-    }
-    .lyric-word.past {
-      background: none;
-      -webkit-background-clip: initial;
-      color: rgb(var(--fg-rgb));
-      -webkit-text-fill-color: rgb(var(--fg-rgb));
-      filter: drop-shadow(0 0 5px rgb(var(--fg-rgb) / 0.25));
-    }
-    /* Mode Plein Écran pour les paroles (Ancrage parfait sans glitch) */
-    .lyrics-section.is-fullscreen {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      z-index: 99999;
-      width: 100%;
-      height: 100%;
-      height: 100dvh;
-      max-width: none;
-      border-radius: 0;
-      border: none;
-      background: rgb(var(--bg-rgb) / 0.98);
-      backdrop-filter: blur(50px);
-      margin: 0;
-      padding: max(16px, env(safe-area-inset-top, 16px)) 16px 0;
-      display: flex !important;
-      flex-direction: column;
-      box-sizing: border-box;
-      overflow: hidden;
-    }
-    .lyrics-section.is-fullscreen .lyrics-header {
-      flex-shrink: 0;
-      padding-bottom: 10px;
-      margin-bottom: 10px;
-    }
-    .lyrics-section.is-fullscreen .lyrics-title-text {
-      font-size: 15px;
-    }
-    .lyrics-section.is-fullscreen .btn-fullscreen-lyrics {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      background: rgb(var(--fg-rgb) / 0.16);
-    }
-    .lyrics-section.is-fullscreen .lyrics-scroll {
-      max-height: none;
-      flex: 1 1 0;
-      min-height: 0; /* Empêche le contenu de pousser les boutons hors écran */
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      padding: 10px 4px 20px;
-    }
-    .lyrics-section.is-fullscreen .lyric-line {
-      font-size: 24px;
-      line-height: 1.45;
-      padding: 10px 14px;
-    }
-    .lyrics-section.is-fullscreen .lyric-line.active {
-      font-size: 24px;
-      font-weight: 800;
-      color: rgb(var(--fg-rgb));
-      text-shadow: 0 0 20px rgb(var(--fg-rgb) / 0.6);
-      background: rgb(var(--fg-rgb) / 0.06);
-      border-radius: 12px;
-    }
-    .lyrics-fullscreen-controls {
-      display: none;
-    }
-    .lyrics-section.is-fullscreen .lyrics-fullscreen-controls {
-      display: flex;
-      flex-shrink: 0;
-      align-items: center;
-      justify-content: center;
-      gap: 28px;
-      padding: 12px 0 max(16px, env(safe-area-inset-bottom, 16px));
-      border-top: 1px solid var(--border);
-      background: rgb(var(--bg-rgb) / 0.85);
-      backdrop-filter: blur(20px);
-    }
-    .btn-fs-nav {
-      background: transparent;
-      border: none;
-      color: var(--text);
-      cursor: pointer;
-      width: 48px;
-      height: 48px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 50%;
-    }
-    .btn-fs-play {
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      width: 56px;
-      height: 56px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 4px 16px var(--accent-glow);
-    }
-    /* Section À Suivre (File d'attente / Queue) */
-    .queue-section {
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      background: var(--panel-bg);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 14px;
-      backdrop-filter: blur(16px);
-      margin-bottom: 20px;
-    }
-    .queue-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 13px;
-      font-weight: 800;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      color: var(--text-dim);
-      margin-bottom: 10px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--border);
-    }
-    .queue-header-left {
-      display: flex;
-      align-items: center;
-      gap: 9px;
-    }
-    .btn-queue-search {
-      background: rgb(var(--fg-rgb) / 0.08);
-      border: 1px solid rgb(var(--fg-rgb) / 0.12);
-      color: var(--text);
-      width: 30px;
-      height: 30px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      padding: 0;
-    }
-    .btn-queue-search:hover, .btn-queue-search.active {
-      background: var(--accent);
-      color: #fff;
-      border-color: var(--accent);
-      box-shadow: 0 0 12px var(--accent-glow);
-    }
-    .btn-queue-search:active {
-      transform: scale(0.92);
-    }
-    .search-panel {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin-bottom: 12px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid var(--border);
-      animation: fadeIn 0.2s ease;
-    }
-    .search-input-wrap {
-      display: flex;
-      align-items: center;
-      background: rgb(var(--fg-rgb) / 0.06);
-      border: 1px solid rgb(var(--fg-rgb) / 0.14);
-      border-radius: 10px;
-      padding: 8px 12px;
-      gap: 10px;
-      transition: border-color 0.2s, background 0.2s;
-    }
-    .search-input-wrap:focus-within {
-      border-color: var(--accent);
-      background: rgb(var(--fg-rgb) / 0.1);
-    }
-    .search-icon {
-      fill: var(--text-dim);
-      flex-shrink: 0;
-    }
-    .search-input {
-      flex: 1;
-      background: transparent;
-      border: none;
-      outline: none;
-      color: var(--text);
-      font-size: 13.5px;
-      font-weight: 600;
-    }
-    .search-input::placeholder {
-      color: var(--text-dim);
-      font-weight: 400;
-    }
-    .search-clear-btn {
-      background: rgb(var(--fg-rgb) / 0.1);
-      border: none;
-      color: var(--text);
-      font-size: 12px;
-      cursor: pointer;
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: background 0.15s;
-    }
-    .search-clear-btn:hover {
-      background: rgb(var(--fg-rgb) / 0.2);
-    }
-    .search-status {
-      font-size: 12px;
-      color: var(--text-dim);
-      text-align: center;
-      padding: 6px;
-    }
-    .search-results-list {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      max-height: 280px;
-      overflow-y: auto;
-      scrollbar-width: thin;
-    }
-    .search-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px 10px;
-      border-radius: 10px;
-      background: rgb(var(--fg-rgb) / 0.04);
-      border: 1px solid rgb(var(--fg-rgb) / 0.06);
-      transition: background 0.15s;
-    }
-    .search-item:hover {
-      background: rgb(var(--fg-rgb) / 0.08);
-    }
-    .search-thumb {
-      width: 38px;
-      height: 38px;
-      border-radius: 6px;
-      object-fit: cover;
-      flex-shrink: 0;
-      background: #000;
-    }
-    .search-info {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .search-title {
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--text);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .search-artist {
-      font-size: 11.5px;
-      color: var(--text-dim);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-top: 2px;
-    }
-    .search-actions {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-shrink: 0;
-    }
-    .btn-search-act {
-      background: rgb(var(--fg-rgb) / 0.08);
-      border: 1px solid rgb(var(--fg-rgb) / 0.12);
-      color: var(--text);
-      width: 32px;
-      height: 32px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: all 0.15s ease;
-      padding: 0;
-    }
-    .btn-search-act:active {
-      transform: scale(0.9);
-    }
-    .btn-search-act.play-act:hover {
-      background: #00e676;
-      color: #000;
-      border-color: #00e676;
-    }
-    .btn-search-act.queue-act:hover {
-      background: var(--accent);
-      color: #fff;
-      border-color: var(--accent);
-    }
-    .btn-search-act.added {
-      background: #00e676 !important;
-      color: #000 !important;
-      border-color: #00e676 !important;
-    }
-    .queue-count {
-      font-size: 11px;
-      background: rgb(var(--fg-rgb) / 0.1);
-      padding: 2px 7px;
-      border-radius: 10px;
-      color: var(--text);
-    }
-    .queue-list {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      max-height: 380px;
-      overflow-y: auto;
-      scrollbar-width: thin;
-    }
-    .queue-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px 10px;
-      border-radius: 10px;
-      cursor: pointer;
-      transition: background 0.15s ease;
-    }
-    .queue-item:active {
-      background: var(--card-hover);
-      transform: scale(0.98);
-    }
-    .queue-item.current {
-      background: rgba(255, 0, 85, 0.15);
-      border: 1px solid rgba(255, 0, 85, 0.3);
-    }
-    .queue-thumb {
-      width: 38px;
-      height: 38px;
-      border-radius: 6px;
-      background: #000;
-      object-fit: cover;
-      flex-shrink: 0;
-    }
-    .queue-info {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .queue-title {
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--text);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .queue-item.current .queue-title {
-      color: var(--accent);
-    }
-    .queue-artist {
-      font-size: 11.5px;
-      color: var(--text-dim);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-top: 1px;
-    }
-    .queue-duration {
-      font-size: 11px;
-      color: var(--text-dim);
-      font-variant-numeric: tabular-nums;
-      flex-shrink: 0;
-      margin-left: 6px;
-    }
-    svg {
-      fill: currentColor;
+    @media (prefers-reduced-transparency: reduce) {
+      .toolbar { background: var(--surface); backdrop-filter: none; -webkit-backdrop-filter: none; }
+      .ambient-bg { display: none; }
     }
   </style>
   <script src="peerjs.min.js"></script>
@@ -864,152 +395,157 @@
   <div class="ambient-bg" id="bg"></div>
   <div class="ambient-overlay"></div>
 
-  <div class="content">
-    <div class="status-bar">
-      <div class="status-dot" id="conn-dot"></div>
-      <span id="conn-text">Connexion à votre PC…</span>
-    </div>
-
-    <div class="cover-wrap" id="cover-wrap">
-      <img id="cover" class="cover-img" src="" alt="Album Art" draggable="false">
-      <div class="cover-volume" id="cover-volume"><div class="cover-volume-fill" id="cover-volume-fill"></div></div>
-    </div>
-
-    <div class="track-meta">
-      <div class="title" id="title">En attente de connexion…</div>
-      <div class="artist" id="artist">Scannez le QR Code sur YouTube Music</div>
-    </div>
-
-    <div class="progress-box">
-      <input type="range" class="progress-slider" id="seek" min="0" max="1000" value="0">
-      <div class="time-row">
-        <span id="cur-time">0:00</span>
-        <span id="dur-time">0:00</span>
-      </div>
-    </div>
-
-    <div class="controls-main">
-      <button class="btn-nav" id="prev" title="Précédent">
-        <svg viewBox="0 0 24 24" width="28" height="28"><path d="M6 6h2v12H6zM9.5 12l8.5 6V6z"/></svg>
-      </button>
-      <button class="btn-play" id="play" title="Lecture / Pause">
-        <svg id="play-icon" viewBox="0 0 24 24" width="32" height="32"><path d="M8 5v14l11-7z"/></svg>
-      </button>
-      <button class="btn-nav" id="next" title="Suivant">
-        <svg viewBox="0 0 24 24" width="28" height="28"><path d="M6 18l8.5-6L6 6v12zM16 6h2v12h-2z"/></svg>
-      </button>
-    </div>
-
-    <div class="controls-sec">
-      <button class="btn-tgl" id="dislike" title="Dislike">
-        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zM21 3v12h-4V3h4z"/></svg>
-      </button>
-      <button class="btn-tgl" id="like" title="Like">
-        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M9 21h10c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2zM1 9h4v12H1V9z"/></svg>
-      </button>
-      <button class="btn-tgl" id="shuffle" title="Aléatoire">
-        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
-      </button>
-      <button class="btn-tgl" id="repeat" title="Répéter">
-        <svg id="repeat-icon" viewBox="0 0 24 24" width="20" height="20"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
-      </button>
-      <button class="btn-tgl" id="lyrics-btn" title="Afficher les paroles">
-        <svg viewBox="0 0 24 24" width="20" height="20">
-          <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-        </svg>
-      </button>
-    </div>
-
-    <div class="volume-box">
-      <svg viewBox="0 0 24 24" width="18" height="18"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 00-2.5-4.03v8.05A4.5 4.5 0 0016.5 12z"/></svg>
-      <input type="range" class="volume-slider" id="volume" min="0" max="100" value="100">
+  <main class="player">
+    <header class="top">
+      <div class="device"><div class="status-dot" id="conn-dot"></div><span id="conn-text">Connexion à votre PC…</span></div>
       <button class="btn-hand" id="hand-btn" title="Curseur à la main (caméra) : paume pour viser, pincement pour cliquer" aria-label="Curseur à la main">
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M21 7a1.5 1.5 0 0 0-3 0v4.5h-.5V3.5a1.5 1.5 0 0 0-3 0v8h-.5V2.5a1.5 1.5 0 0 0-3 0v9H10.5V5a1.5 1.5 0 0 0-3 0v10.2l-2.4-2.3a1.6 1.6 0 0 0-2.3 2.2l4.6 5.4A5 5 0 0 0 11.2 22H16a5 5 0 0 0 5-5z"/></svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 7a1.5 1.5 0 0 0-3 0v4.5h-.5V3.5a1.5 1.5 0 0 0-3 0v8h-.5V2.5a1.5 1.5 0 0 0-3 0v9H10.5V5a1.5 1.5 0 0 0-3 0v10.2l-2.4-2.3a1.6 1.6 0 0 0-2.3 2.2l4.6 5.4A5 5 0 0 0 11.2 22H16a5 5 0 0 0 5-5z"/></svg>
+      </button>
+    </header>
+
+    <div class="cover-area">
+      <div class="cover-wrap" id="cover-wrap">
+        <img id="cover" class="cover-img" src="" alt="Pochette" draggable="false">
+        <div class="cover-volume" id="cover-volume"><div class="cover-volume-fill" id="cover-volume-fill"></div></div>
+      </div>
+    </div>
+
+    <section class="meta">
+      <div class="meta-text">
+        <div class="title" id="title">En attente de connexion…</div>
+        <div class="artist" id="artist">Scannez le QR Code sur YouTube Music</div>
+      </div>
+      <button class="btn-icon" id="dislike" title="Je n'aime pas" aria-label="Je n'aime pas">
+        <svg viewBox="0 0 24 24"><path d="M15 3H6a2 2 0 0 0-1.8 1.2l-3 7a2 2 0 0 0-.2.8v2a2 2 0 0 0 2 2h6.3l-1 4.6V21a1.5 1.5 0 0 0 .5 1l1 1 6.6-6.6A2 2 0 0 0 17 15V5a2 2 0 0 0-2-2zm4 0h4v12h-4z"/></svg>
+      </button>
+      <button class="btn-icon" id="like" title="J'aime" aria-label="J'aime">
+        <svg viewBox="0 0 24 24"><path d="M9 21h9a2 2 0 0 0 1.8-1.2l3-7a2 2 0 0 0 .2-.8v-2a2 2 0 0 0-2-2h-6.3l1-4.6V3a1.5 1.5 0 0 0-.5-1L14.2 1 7.6 7.6A2 2 0 0 0 7 9v10a2 2 0 0 0 2 2zM1 9h4v12H1z"/></svg>
+      </button>
+    </section>
+
+    <section>
+      <input type="range" class="range" id="seek" min="0" max="1000" value="0" aria-label="Position">
+      <div class="times"><span id="cur-time">0:00</span><span id="dur-time">0:00</span></div>
+    </section>
+
+    <section class="transport">
+      <button class="btn-nav" id="prev" title="Précédent" aria-label="Précédent">
+        <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+      </button>
+      <button class="btn-play" id="play" title="Lecture / Pause" aria-label="Lecture / Pause">
+        <svg id="play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+      <button class="btn-nav" id="next" title="Suivant" aria-label="Suivant">
+        <svg viewBox="0 0 24 24"><path d="m6 18 8.5-6L6 6zM16 6h2v12h-2z"/></svg>
+      </button>
+    </section>
+
+    <section class="volume-box">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9z"/></svg>
+      <input type="range" class="range" id="volume" min="0" max="100" value="100" aria-label="Volume">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>
+    </section>
+  </main>
+
+  <nav class="toolbar" aria-label="Outils">
+    <button class="tool btn-tgl" id="lyrics-btn" title="Paroles">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h11v2H4zm0 4h11v2H4zm0 4h7v2H4zm13-8h3v9.5a3 3 0 1 1-2-2.8V5z"/></svg>Paroles
+    </button>
+    <button class="tool btn-tgl" id="shuffle" title="Lecture aléatoire">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.6 9.2 5.4 4 4 5.4l5.2 5.2zM14.5 4l2 2L4 18.6 5.4 20 18 7.5l2 2V4zm.3 9.4-1.4 1.4 3.1 3.1-2 2.1H20v-5.5l-2 2z"/></svg>Aléatoire
+    </button>
+    <button class="tool btn-tgl" id="repeat" title="Répéter">
+      <svg id="repeat-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>Répéter
+    </button>
+    <button class="tool" id="queue-btn" title="À suivre">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h12v2H3zm0 5h12v2H3zm0 5h8v2H3zm14-3v6l5-3z"/></svg>À suivre
+    </button>
+  </nav>
+
+  <div class="sheet-scrim" id="sheet-scrim"></div>
+
+  <!-- Panneau Paroles -->
+  <section class="sheet lyrics-section" id="lyrics-box" aria-label="Paroles">
+    <div class="sheet-head">
+      <div class="grabber"></div>
+      <div class="sheet-title">
+        <h2>Paroles</h2>
+        <div class="sheet-actions">
+          <button class="btn-icon" id="btn-lyrics-fullscreen" title="Plein écran" aria-label="Plein écran">
+            <svg id="fullscreen-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="sheet-body lyrics-scroll" id="lyrics-scroll">
+      <div class="lyrics-status" id="lyrics-status">Chargement des paroles…</div>
+      <div class="lyrics-list" id="lyrics-list"></div>
+    </div>
+    <div class="lyrics-fullscreen-controls" id="lyrics-fs-controls">
+      <button class="btn-fs-nav" id="fs-prev" title="Précédent" aria-label="Précédent">
+        <svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+      </button>
+      <button class="btn-fs-play" id="fs-play" title="Lecture / Pause" aria-label="Lecture / Pause">
+        <svg id="fs-play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+      <button class="btn-fs-nav" id="fs-next" title="Suivant" aria-label="Suivant">
+        <svg viewBox="0 0 24 24"><path d="m6 18 8.5-6L6 6zM16 6h2v12h-2z"/></svg>
       </button>
     </div>
+  </section>
 
-    <!-- Section Paroles -->
-    <div class="lyrics-section" id="lyrics-box" style="display: none;">
-      <div class="lyrics-header">
-        <div class="lyrics-title-group">
-          <span class="lyrics-title-text">PAROLES</span>
+  <!-- Panneau À suivre et recherche -->
+  <section class="sheet queue-section" id="queue-box" aria-label="À suivre">
+    <div class="sheet-head">
+      <div class="grabber"></div>
+      <div class="sheet-title">
+        <h2>À suivre</h2>
+        <div class="sheet-actions">
+          <span class="queue-count" id="queue-count">0</span>
+          <button class="btn-icon" id="btn-search-toggle" title="Rechercher sur YouTube Music" aria-label="Rechercher">
+            <svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          </button>
         </div>
-        <button class="btn-fullscreen-lyrics" id="btn-lyrics-fullscreen" title="Plein écran">
-          <svg id="fullscreen-icon" viewBox="0 0 24 24" width="18" height="18">
-            <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
-          </svg>
-        </button>
-      </div>
-      <div class="lyrics-scroll" id="lyrics-scroll">
-        <div class="lyrics-status" id="lyrics-status">Chargement des paroles…</div>
-        <div class="lyrics-list" id="lyrics-list"></div>
-      </div>
-      <!-- Mini barre de transport en plein écran -->
-      <div class="lyrics-fullscreen-controls" id="lyrics-fs-controls">
-        <button class="btn-fs-nav" id="fs-prev" title="Précédent">
-          <svg viewBox="0 0 24 24" width="24" height="24"><path d="M6 6h2v12H6zM9.5 12l8.5 6V6z"/></svg>
-        </button>
-        <button class="btn-fs-play" id="fs-play" title="Lecture / Pause">
-          <svg id="fs-play-icon" viewBox="0 0 24 24" width="28" height="28"><path d="M8 5v14l11-7z"/></svg>
-        </button>
-        <button class="btn-fs-nav" id="fs-next" title="Suivant">
-          <svg viewBox="0 0 24 24" width="24" height="24"><path d="M6 18l8.5-6L6 6v12zM16 6h2v12h-2z"/></svg>
-        </button>
       </div>
     </div>
-
-    <!-- Section À Suivre & Recherche -->
-    <div class="queue-section" id="queue-box">
-      <div class="queue-header">
-        <div class="queue-header-left">
-          <button class="btn-queue-search" id="btn-search-toggle" title="Rechercher des titres sur YouTube Music">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-              <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
-            </svg>
-          </button>
-          <span>À suivre</span>
-        </div>
-        <span class="queue-count" id="queue-count">0</span>
-      </div>
-
-      <!-- Panneau de recherche dépliable -->
+    <div class="sheet-body">
       <div class="search-panel" id="search-panel" style="display: none;">
         <div class="search-input-wrap">
-          <svg viewBox="0 0 24 24" width="16" height="16" class="search-icon">
-            <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
-          </svg>
-          <input type="text" class="search-input" id="search-input" placeholder="Chercher un titre à lancer ou ajouter…" autocomplete="off" autocapitalize="off" spellcheck="false">
-          <button class="search-clear-btn" id="search-clear" style="display: none;" title="Effacer">✕</button>
+          <svg viewBox="0 0 24 24" class="search-icon"><path d="M15.5 14h-.8l-.3-.3A6.5 6.5 0 1 0 14 15.5l.3.3v.8l5 5 1.5-1.5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+          <input type="text" class="search-input" id="search-input" placeholder="Rechercher" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <button class="search-clear-btn" id="search-clear" style="display: none;" title="Effacer" aria-label="Effacer">
+            <svg viewBox="0 0 24 24" width="12" height="12"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>
+          </button>
         </div>
         <div class="search-status" id="search-status" style="display: none;"></div>
         <div class="search-results-list" id="search-results-list"></div>
       </div>
 
       <div class="queue-list" id="queue-list">
-        <div style="font-size: 12px; color: var(--text-dim); text-align: center; padding: 12px;">Aucun morceau en attente</div>
+        <div style="font-size: 0.8125rem; color: var(--text-dim); text-align: center; padding: 12px;">File d'attente vide</div>
       </div>
-    </div>
 
-    <!-- Panneau Diagnostic / Logs -->
-    <div class="logs-card" id="logs-card" hidden style="margin-top: 14px; background: rgb(var(--shade-rgb) / 0.5); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; font-family: monospace;">
-      <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" id="logs-toggle">
-        <span style="font-size: 11.5px; font-weight: 700; color: var(--text-dim); display: flex; align-items: center; gap: 6px;">
-          📋 DIAGNOSTIC & LOGS
-          <span id="logs-badge" style="font-size: 10px; background: rgba(255,255,255,0.1); padding: 1px 6px; border-radius: 8px;">0</span>
-        </span>
-        <div style="display: flex; gap: 8px; align-items: center;">
-          <button id="btn-copy-logs" style="background: rgba(255,255,255,0.1); border: none; color: #fff; font-size: 10.5px; padding: 4px 8px; border-radius: 6px; cursor: pointer;">Copier</button>
-          <button id="btn-clear-logs" style="background: rgba(255,255,255,0.1); border: none; color: #fff; font-size: 10.5px; padding: 4px 8px; border-radius: 6px; cursor: pointer;">Effacer</button>
-          <span id="logs-arrow" style="font-size: 10px; color: var(--text-dim); transition: transform 0.2s;">▼</span>
+      <!-- Diagnostic (visible avec ?debug) -->
+      <div class="logs-card" id="logs-card" hidden style="background: rgb(var(--shade-rgb) / 0.5); border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; font-family: monospace;">
+        <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" id="logs-toggle">
+          <span style="font-size: 0.6875rem; font-weight: 500; color: var(--text-dim); display: flex; align-items: center; gap: 8px;">
+            Diagnostic
+            <span id="logs-badge" style="font-size: 0.6875rem; color: var(--text-muted);">0</span>
+          </span>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button id="btn-copy-logs" style="background: var(--track); color: var(--text); font-size: 0.6875rem; padding: 4px 8px; border-radius: 6px;">Copier</button>
+            <button id="btn-clear-logs" style="background: var(--track); color: var(--text); font-size: 0.6875rem; padding: 4px 8px; border-radius: 6px;">Effacer</button>
+            <span id="logs-arrow" style="font-size: 0.6875rem; color: var(--text-dim); transition: transform 0.2s;">▼</span>
+          </div>
         </div>
-      </div>
-      <div id="logs-body" style="display: none; margin-top: 10px; max-height: 250px; overflow-y: auto; font-size: 11px; line-height: 1.5; color: #bbb; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
-        <div id="logs-list" style="display: flex; flex-direction: column; gap: 4px;">
-          <div style="color: #666;">Initialisation des logs…</div>
+        <div id="logs-body" style="display: none; margin-top: 8px; max-height: 252px; overflow-y: auto; font-size: 0.6875rem; line-height: 1.5; color: var(--text-dim); border-top: 1px solid var(--border); padding-top: 8px;">
+          <div id="logs-list" style="display: flex; flex-direction: column; gap: 4px;">
+            <div style="color: var(--text-muted);">Initialisation des journaux…</div>
+          </div>
         </div>
       </div>
     </div>
-  </div>
+  </section>
 
   <script>
     // Les messages transitent en texte JSON brut sur le RTCDataChannel natif (le canal JSON de PeerJS
@@ -1306,7 +842,7 @@
         // Recharger les paroles du morceau en cours dès l'autorisation
         if (typeof lastLyricsTrackKey !== 'undefined') lastLyricsTrackKey = '';
         el.connDot.className = 'status-dot connected';
-        el.connText.textContent = 'Connecté en direct à votre PC';
+        el.connText.textContent = 'Connecté au PC';
         addLog('AUTH', 'Appareil autorisé par le PC', '#00e676');
       } else if (status === 'pending') {
         el.connDot.className = 'status-dot';
@@ -1435,6 +971,7 @@
     if (el.btnSearchToggle) {
       el.btnSearchToggle.addEventListener('click', toggleSearchPanel);
     }
+
 
     if (el.searchClear) {
       el.searchClear.addEventListener('click', () => {
@@ -1619,15 +1156,15 @@
       currentRepeatMode = mode;
       if (mode === 2) {
         el.repeatIcon.innerHTML = REPEAT_ONE_SVG;
-        el.repeat.className = 'btn-tgl active';
+        el.repeat.classList.add('active');
         el.repeat.title = 'Répéter le titre en cours (1)';
       } else if (mode === 1) {
         el.repeatIcon.innerHTML = REPEAT_ALL_SVG;
-        el.repeat.className = 'btn-tgl active';
+        el.repeat.classList.add('active');
         el.repeat.title = 'Répéter la playlist (Tout)';
       } else {
         el.repeatIcon.innerHTML = REPEAT_OFF_SVG;
-        el.repeat.className = 'btn-tgl';
+        el.repeat.classList.remove('active');
         el.repeat.title = 'Répétition désactivée';
       }
     }
@@ -1644,6 +1181,146 @@
     if (el.fsNext) el.fsNext.addEventListener('click', () => sendAction('next'));
 
     // ==========================================
+    // Panneaux tirables (paroles, file d'attente)
+    // ==========================================
+    // Suivi 1:1 du doigt sur l'en-tête, élan projeté au relâchement (décélération façon iOS),
+    // aimantation mi-hauteur / plein écran / fermé, résistance élastique au-delà du haut.
+    // Ressort sans dépassement, animé depuis la position affichée : interruptible à tout moment.
+    const sheets = (() => {
+      const scrim = document.getElementById('sheet-scrim');
+      const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const registry = new Map();
+      let current = null;
+      const snaps = () => ({ full: 48, half: Math.round(window.innerHeight * 0.4), closed: Math.round(window.innerHeight * 1.05) });
+      const project = (v, d = 0.998) => (v / 1000) * d / (1 - d);
+      const rubber = (over, dim, c = 0.55) => (over * dim * c) / (dim + c * Math.abs(over));
+
+      function paint(entry, y) {
+        entry.y = y;
+        entry.el.style.transform = 'translateY(' + y + 'px)';
+        const s = snaps();
+        const open = Math.max(0, Math.min(1, 1 - (y - s.half) / (s.closed - s.half)));
+        scrim.style.opacity = String(open);
+        scrim.style.pointerEvents = open > 0.05 ? 'auto' : 'none';
+      }
+
+      function settle(entry, target, velocity = 0) {
+        cancelAnimationFrame(entry.raf);
+        const done = () => {
+          if (target >= snaps().closed) {
+            if (current === entry) current = null;
+            if (entry.onClose) entry.onClose();
+          }
+        };
+        if (reduceMotion) { paint(entry, target); done(); return; }
+        const response = 0.32;
+        const k = (2 * Math.PI / response) ** 2;
+        const c = 4 * Math.PI / response; // amortissement critique : aucun dépassement
+        let v = velocity;
+        let last = performance.now();
+        const tick = (t) => {
+          const dt = Math.min(0.032, (t - last) / 1000 || 0.016);
+          last = t;
+          v += (-k * (entry.y - target) - c * v) * dt;
+          const y = entry.y + v * dt;
+          if (Math.abs(y - target) < 0.5 && Math.abs(v) < 5) { paint(entry, target); done(); return; }
+          paint(entry, y);
+          entry.raf = requestAnimationFrame(tick);
+        };
+        entry.raf = requestAnimationFrame(tick);
+      }
+
+      function register(name, el, hooks = {}) {
+        const entry = { name, el, y: snaps().closed, raf: 0, onOpen: hooks.onOpen, onClose: hooks.onClose };
+        registry.set(name, entry);
+        paint(entry, entry.y);
+        scrim.style.opacity = '0';
+        scrim.style.pointerEvents = 'none';
+        const head = el.querySelector('.sheet-head');
+        let drag = null;
+        head.addEventListener('pointerdown', (e) => {
+          if (e.target.closest('button')) return; // les boutons de l'en-tête restent des boutons
+          try { head.setPointerCapture(e.pointerId); } catch (err) {}
+          cancelAnimationFrame(entry.raf);
+          drag = { id: e.pointerId, startY: e.clientY, startPos: entry.y, hist: [[e.clientY, e.timeStamp]] };
+        });
+        head.addEventListener('pointermove', (e) => {
+          if (!drag || e.pointerId !== drag.id) return;
+          let y = drag.startPos + (e.clientY - drag.startY);
+          const top = snaps().full;
+          if (y < top) y = top - rubber(top - y, window.innerHeight);
+          paint(entry, y);
+          drag.hist.push([e.clientY, e.timeStamp]);
+          if (drag.hist.length > 6) drag.hist.shift();
+        });
+        const release = (e) => {
+          if (!drag || e.pointerId !== drag.id) return;
+          const a = drag.hist[0], b = drag.hist[drag.hist.length - 1];
+          const v = b[1] > a[1] ? ((b[0] - a[0]) / (b[1] - a[1])) * 1000 : 0;
+          const landing = entry.y + project(v);
+          const s = snaps();
+          const target = [s.full, s.half, s.closed].reduce((best, p) => (Math.abs(p - landing) < Math.abs(best - landing) ? p : best), s.half);
+          drag = null;
+          settle(entry, target, v);
+        };
+        head.addEventListener('pointerup', release);
+        head.addEventListener('pointercancel', release);
+      }
+
+      function open(name, where = 'half') {
+        const entry = registry.get(name);
+        if (!entry) return;
+        if (current && current !== entry) close(true);
+        current = entry;
+        if (entry.onOpen) entry.onOpen();
+        settle(entry, snaps()[where]);
+      }
+
+      function close(instant) {
+        if (!current) return;
+        const entry = current;
+        if (instant) {
+          cancelAnimationFrame(entry.raf);
+          paint(entry, snaps().closed);
+          current = null;
+          if (entry.onClose) entry.onClose();
+        } else {
+          settle(entry, snaps().closed);
+        }
+      }
+
+      scrim.addEventListener('click', () => close());
+      return { register, open, close, isOpen: (name) => current === registry.get(name) };
+    })();
+
+    // Remplissage des curseurs (piste fine, épaisse sous le doigt)
+    function paintRange(input) {
+      const min = +input.min || 0;
+      const max = input.max === '' ? 100 : +input.max;
+      input.style.setProperty('--p', ((+input.value - min) / (max - min)) * 100 + '%');
+    }
+    for (const r of document.querySelectorAll('input.range')) {
+      paintRange(r);
+      r.addEventListener('input', () => paintRange(r));
+      r.addEventListener('pointerdown', () => r.classList.add('is-active'));
+      for (const ev of ['pointerup', 'pointercancel', 'blur']) r.addEventListener(ev, () => r.classList.remove('is-active'));
+    }
+    // L'état reçu du PC change la valeur sans événement : on repeint régulièrement
+    setInterval(() => document.querySelectorAll('input.range').forEach(paintRange), 250);
+
+    // Panneau « À suivre » (la file d'attente et la recherche)
+    const queueBtn = document.getElementById('queue-btn');
+    sheets.register('queue', document.getElementById('queue-box'), {
+      onOpen() { queueBtn.classList.add('active'); },
+      onClose() { queueBtn.classList.remove('active'); }
+    });
+    queueBtn.addEventListener('click', () => {
+      vibrate();
+      if (sheets.isOpen('queue')) sheets.close();
+      else sheets.open('queue');
+    });
+
+    // ==========================================
     // Gestion des Paroles et Plein Écran
     // ==========================================
     let lyricsOpen = false;
@@ -1654,17 +1331,24 @@
     let lastTrackDuration = 0;
 
     if (el.lyricsBtn) {
-      el.lyricsBtn.addEventListener('click', () => {
-        vibrate();
-        lyricsOpen = !lyricsOpen;
-        el.lyricsBtn.classList.toggle('active', lyricsOpen);
-        el.lyricsBox.style.display = lyricsOpen ? 'block' : 'none';
-        if (lyricsOpen) {
+      sheets.register('lyrics', el.lyricsBox, {
+        onOpen() {
+          lyricsOpen = true;
+          el.lyricsBtn.classList.add('active');
           if (lyricsLines.length === 0) {
             fetchLyrics(el.title.textContent, el.artist.textContent, lastTrackDuration);
           }
-          el.lyricsBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        },
+        onClose() {
+          lyricsOpen = false;
+          el.lyricsBtn.classList.remove('active');
+          if (isFullscreenLyrics) toggleFullscreenLyrics();
         }
+      });
+      el.lyricsBtn.addEventListener('click', () => {
+        vibrate();
+        if (sheets.isOpen('lyrics')) sheets.close();
+        else sheets.open('lyrics');
       });
     }
 
@@ -1955,7 +1639,11 @@
       isUserSeeking = false;
     });
 
-    el.volume.addEventListener('input', () => { isUserVolume = true; });
+    el.volume.addEventListener('input', () => {
+      isUserVolume = true;
+      // Retour continu côté PC pendant le geste (setGestureVolume régule l'envoi)
+      if (typeof setGestureVolume === 'function') setGestureVolume(parseInt(el.volume.value, 10));
+    });
     el.volume.addEventListener('change', () => {
       sendAction('volume', parseInt(el.volume.value, 10));
       isUserVolume = false;
@@ -2194,7 +1882,7 @@
     airCursorEl.hidden = true;
     document.body.appendChild(airCursorEl);
 
-    const AIR_TARGETS = 'button, input[type="range"], .queue-item, .search-item, .lyric-line, #cover-wrap, a, input[type="text"], select';
+    const AIR_TARGETS = 'button, input[type="range"], .queue-item, .search-item, .lyric-line, #cover-wrap, #sheet-scrim, a, input[type="text"], select';
     const AIR_MAGNETIC = 'button, a, select';
     const air = { hover: null, mode: null, target: null, startX: 0, startY: 0, lastY: 0, shownX: 0, shownY: 0 };
 
@@ -2506,7 +2194,7 @@
       currentQueue = Array.isArray(queue) ? [...queue] : [];
       if (!Array.isArray(queue) || queue.length === 0) {
         el.queueCount.textContent = '0';
-        el.queueList.innerHTML = '<div style="font-size: 12px; color: var(--text-dim); text-align: center; padding: 12px;">Aucun morceau en attente</div>';
+        el.queueList.innerHTML = '<div style="font-size: 0.8125rem; color: var(--text-dim); text-align: center; padding: 12px;">File d\'attente vide</div>';
         return;
       }
 
