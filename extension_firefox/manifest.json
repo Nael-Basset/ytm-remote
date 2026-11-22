@@ -24,7 +24,8 @@
     "alarms"
   ],
   "host_permissions": [
-    "*://music.youtube.com/*"
+    "*://music.youtube.com/*",
+    "http://127.0.0.1:47911/*"
   ],
   "background": {
     "scripts": [

@@ -44,6 +44,13 @@ browser.alarms.onAlarm.addListener(async (alarm) => {
 // Écoute des messages venant du popup ou des content scripts
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.action) {
+    case 'naelbar-room':
+      // Point d'entrée local de naelbar, sur cette machine seulement. Sans
+      // naelbar, la requête échoue sans bruit.
+      if (typeof message.room === 'string' && /^ytm-[a-f0-9]{24}$/.test(message.room)) {
+        fetch('http://127.0.0.1:47911/ytm/room', { method: 'POST', body: message.room }).catch(() => {});
+      }
+      break;
     case 'set-sleep-timer':
       setSleepTimer(message.duration);
       break;

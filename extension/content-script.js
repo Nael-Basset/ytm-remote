@@ -2227,6 +2227,11 @@
         }
       });
       peerHost = host;
+      // naelbar (si installé) range le salon dans le compte de l'utilisateur :
+      // la télécommande de son site s'y connecte sans scanner ce QR code.
+      host.on('open', (id) => {
+        try { browser.runtime.sendMessage({ action: 'naelbar-room', room: id }); } catch (e) {}
+      });
 
       host.on('connection', (conn) => {
         try { conn.serialization = 'json'; } catch (e) {}
@@ -2321,7 +2326,7 @@
       });
 
       host.on('disconnected', () => {
-        if (peerHost === host && !host.destroyed) {
+            if (peerHost === host && !host.destroyed) {
           host.reconnect();
         }
       });

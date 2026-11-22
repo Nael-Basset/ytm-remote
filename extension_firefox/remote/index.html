@@ -130,10 +130,13 @@
     @keyframes hand-wait { 50% { opacity: 0.45; } }
 
     /* Pochette : entière sur un fond flouté d'elle-même ; glisser verticalement règle le volume */
-    .cover-area { flex: 1; min-height: 0; display: grid; place-items: center; }
+    /* La pochette prend la place qui reste, pas une part de l'écran : la page
+       peut être intégrée dans un cadre plus petit (onglet Musique de naelbar). */
+    .cover-area { flex: 1; min-height: 0; display: grid; place-items: center; container-type: size; }
     .cover-wrap {
       position: relative;
       width: min(100%, 46vh, 340px);
+      width: min(100cqw, 100cqh, 340px);
       aspect-ratio: 1;
       border-radius: 16px;
       overflow: hidden;
