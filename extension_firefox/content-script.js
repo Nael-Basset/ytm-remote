@@ -844,11 +844,23 @@
     const bytes = crypto.getRandomValues(new Uint8Array(12));
     return 'ytm-' + Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
   }
+  // naelbar (si installé) range le salon dans le compte de l'utilisateur :
+  // la télécommande de son site s'y connecte sans scanner de QR code.
+  function reportRoomToNaelbar(id) {
+    try {
+      const p = browser.runtime.sendMessage({ action: 'naelbar-room', room: id });
+      if (p && p.then) p.then(
+        (r) => console.info('[naelbar] salon signalé', id, r || ''),
+        (e) => console.warn("[naelbar] arrière-plan de l'extension injoignable", e)
+      );
+    } catch (e) { console.warn('[naelbar] envoi impossible', e); }
+  }
   let ytmRoomId = sessionStorage.getItem('ytmp_p2p_room');
   if (!ytmRoomId || !/^ytm-[a-f0-9]{24}$/.test(ytmRoomId)) {
     ytmRoomId = newRoomId();
     sessionStorage.setItem('ytmp_p2p_room', ytmRoomId);
   }
+  setTimeout(() => reportRoomToNaelbar(ytmRoomId), 1500);
   function remoteUrl() {
     return 'https://nael-basset.github.io/ytm-remote/#' + ytmRoomId;
   }
@@ -2227,11 +2239,7 @@
         }
       });
       peerHost = host;
-      // naelbar (si installé) range le salon dans le compte de l'utilisateur :
-      // la télécommande de son site s'y connecte sans scanner ce QR code.
-      host.on('open', (id) => {
-        try { browser.runtime.sendMessage({ action: 'naelbar-room', room: id }); } catch (e) {}
-      });
+      host.on('open', (id) => reportRoomToNaelbar(id));
 
       host.on('connection', (conn) => {
         try { conn.serialization = 'json'; } catch (e) {}

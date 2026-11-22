@@ -48,7 +48,10 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // Point d'entrée local de naelbar, sur cette machine seulement. Sans
       // naelbar, la requête échoue sans bruit.
       if (typeof message.room === 'string' && /^ytm-[a-f0-9]{24}$/.test(message.room)) {
-        fetch('http://127.0.0.1:47911/ytm/room', { method: 'POST', body: message.room }).catch(() => {});
+        fetch('http://127.0.0.1:47911/ytm/room', { method: 'POST', body: message.room })
+          .then((r) => { console.info('[naelbar] réponse de naelbar', r.status); sendResponse({ naelbar: r.status }); })
+          .catch((e) => { console.warn('[naelbar] naelbar injoignable (pas lancé, ou bloqué par le navigateur)', e); sendResponse({ naelbar: 0 }); });
+        return true;
       }
       break;
     case 'set-sleep-timer':
